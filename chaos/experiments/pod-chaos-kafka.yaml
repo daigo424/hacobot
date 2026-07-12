@@ -1,0 +1,31 @@
+# Kafka Broker Podをランダムに強制終了する実験(PodChaos)。
+#
+# 検証したいこと: Kafka Brokerが落ちても、ロボット側(estop_bridge)はKafka自体への
+# 到達不能を通信途絶と同一の経路で検知し、自律的にSAFE_STOPへ倒れること。
+#
+# 適用方法:
+#   kubectl apply -f chaos/experiments/pod-chaos-kafka.yaml
+# 停止方法:
+#   kubectl delete -f chaos/experiments/pod-chaos-kafka.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-chaos-kafka
+  namespace: kafka
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - kafka
+    labelSelectors:
+      # Strimziが払い出すKafka Broker Pod自体のラベル(kubectl get pods -n kafka --show-labels で確認)。
+      # strimzi-cluster-operatorやentity-operatorのPodを誤って巻き込まないよう、
+      # ブローカーPod固有のラベルを指定する。
+      strimzi.io/name: hacobot-kafka-kafka
+# 注記: Chaos Mesh v2ではリソース自体に周期スケジュール(cron)を埋め込むv1時代の
+# `spec.scheduler`フィールドは廃止されており、代わりに`Schedule`という別のCRD種別で
+# 実験テンプレートをラップする形に変わっている(実際にscheduler付きでapplyしたところ
+# "strict decoding error: unknown field spec.scheduler"で拒否されることを確認した)。
+# 単発実行(kubectl applyの都度1回kill)で要件を満たすため、
+# 周期実行が必要になった場合はSchedule CRDで別途ラップすること。

@@ -1,0 +1,43 @@
+# hacobot Phase1 インフラの一括デプロイ定義
+#
+# 個別に `helm repo add` → `helm install` をチャートごとに手打ちする代わりに、
+# このファイル1つで「どのChartを、どのnamespaceに、どのvaluesで」デプロイするか宣言し、
+# `helmfile sync` 一発で全リリースをインストール/更新する。
+#
+# 実行方法: infra/deploy.sh 経由(推奨)、または直接:
+#   helmfile -f infra/helmfile.yaml sync
+#
+# 注意: KafkaクラスタとKafkaTopic自体はStrimzi Operatorが監視するCRD経由でしか
+# 作成できず、Helmの管轄外のため、Helmfileには含めていない。
+# infra/deploy.sh が sync の後に kubectl apply -f infra/k8s/kafka/ を続けて実行する。
+
+repositories:
+  - name: seaweedfs
+    url: https://seaweedfs.github.io/seaweedfs/helm
+  - name: strimzi
+    url: https://strimzi.io/charts/
+  - name: chaos-mesh
+    url: https://charts.chaos-mesh.org
+
+releases:
+  - name: seaweedfs
+    namespace: seaweedfs
+    createNamespace: true
+    chart: seaweedfs/seaweedfs
+    values:
+      - helm-values/seaweedfs-values.yaml
+
+  - name: strimzi-kafka-operator
+    namespace: kafka
+    createNamespace: true
+    chart: strimzi/strimzi-kafka-operator
+    values:
+      - helm-values/kafka-values.yaml
+
+  - name: chaos-mesh
+    namespace: chaos-mesh
+    createNamespace: true
+    chart: chaos-mesh/chaos-mesh
+    version: 2.6.3
+    values:
+      - helm-values/chaos-mesh-values.yaml

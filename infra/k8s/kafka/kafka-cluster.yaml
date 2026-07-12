@@ -1,0 +1,71 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: kafka-node-pool
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: hacobot-kafka
+spec:
+  replicas: 1
+  roles:
+    - broker
+    - controller
+  storage:
+    type: ephemeral
+  # 未設定だとNode(k3dコンテナ)の空きリソースを無制限に使ってしまうため明示する。
+  # requestsはkubectl top実測(アイドル時 約660Mi)に余裕を持たせた値、
+  # limitsは耐久試験・負荷テストを見据えて広めに確保。
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: hacobot-kafka
+  namespace: kafka
+  annotations:
+    strimzi.io/node-pools: "enabled"
+    strimzi.io/kraft: "enabled"
+spec:
+  kafka:
+    version: 4.3.0
+    metadataVersion: 4.3-IV0
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      # ros2_nav2_container(edge/docker/、network_mode: host)からKafkaへ到達するための
+      # NodePortリスナー。ネイティブDocker Engine(WSL2上、Docker Desktopではない)に
+      # 切り替えたことで、k3dが公開するポートへros2_nav2_containerから直接到達できることを
+      # 実地で確認できた(Docker Desktop使用時は別ネットワーク名前空間のため到達不可)。
+      # nodePortを30092/30093に固定し、k3d cluster create側で
+      # --port 30092:30092@server:0 --port 30093:30093@server:0 を対応させることで、
+      # ros2_nav2_containerからは127.0.0.1:30092への接続で到達できるようにしている。
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          bootstrap:
+            nodePort: 30092
+          brokers:
+            - broker: 0
+              nodePort: 30093
+              advertisedHost: 127.0.0.1
+              advertisedPort: 30093
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+  # Topic Operatorが無いとKafkaTopic CRDが実トピックに反映されないため必須
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

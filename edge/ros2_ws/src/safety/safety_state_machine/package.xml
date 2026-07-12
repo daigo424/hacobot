@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>safety_state_machine</name>
+  <version>0.1.0</version>
+  <description>
+    hacobot フェイルセーフ層: /safety/anomaly_event(severity)を購読しNORMAL/DEGRADED/
+    SAFE_STOP/MANUAL_RECOVERYを遷移するC++ lifecycle node。SAFE_STOP中はNav2の
+    速度指令(/cmd_vel_nav2)をゼロにoverrideして/cmd_velへ出力する。
+  </description>
+  <maintainer email="noreply@example.com">hacobot</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>safety_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>safety_metrics</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

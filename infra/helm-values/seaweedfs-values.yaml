@@ -1,0 +1,22 @@
+# SeaweedFS Helm chart values (dev用シングルノードk3dクラスタ想定)
+#
+# MinIOはコミュニティ版が2025年12月にメンテナンスモード入りし、2026年4月25日に
+# GitHubリポジトリがアーカイブ済み(新機能・セキュリティパッチ・バイナリ配布停止)のため、
+# Apache 2.0で活発にメンテナンスされているSeaweedFSを採用する。
+# 将来的にAWS S3へ移行する前提でも、S3互換ゲートウェイを持つSeaweedFSなら
+# boto3ベースのコードはほぼそのまま移行できる。
+#
+# 公式チャート: seaweedfs/seaweedfs (https://seaweedfs.github.io/seaweedfs/helm)
+# デプロイは infra/deploy.sh (内部で `helmfile -f infra/helmfile.yaml sync` を実行)経由で行う。
+#
+# master/volume/filerはchartデフォルト(各1レプリカ、hostPathストレージ)のまま。
+# S3ゲートウェイのみ明示的に有効化し、固定の認証情報を設定する。
+
+s3:
+  enabled: true
+  enableAuth: true
+  credentials:
+    admin:
+      # PoC用の固定値。本番投入前は必ずKubernetes Secret経由の値に差し替えること。
+      accessKey: hacobot-admin
+      secretKey: hacobot-admin-secret

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>nav2_bringup_custom</name>
+  <version>0.1.0</version>
+  <description>
+    hacobot: TurtleBot3(Waffle)のGazeboシミュレーションとNav2(SLAM Toolbox)スタックを
+    統合するbringupパッケージ
+  </description>
+  <maintainer email="noreply@example.com">hacobot</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>turtlebot3_gazebo</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>safety_bringup</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

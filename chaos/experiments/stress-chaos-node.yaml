@@ -1,0 +1,33 @@
+# k8sノードにCPU/メモリ負荷をかける実験(StressChaos)。
+#
+# 注意(スコープの制約): Chaos MeshのStressChaosはPod(のコンテナ)に対してstress-ngを
+# 実行する形で負荷をかける仕組みであり、ノード全体に直接負荷をかけるAPIではない。
+# ただしこの検証環境はk3dシングルノードクラスタであるため、「ノード上の1つのPodに
+# 強い負荷をかける」ことは実質的に「そのノード全体の残りリソースを圧迫する」ことと
+# 同義になる。この特性を利用して、クラウド側のリソース逼迫がKafka/SeaweedFS等の
+# サービスにどう影響するかを検証する(継続的な高負荷によるサービス劣化シナリオ)。
+#
+# 適用方法:
+#   kubectl apply -f chaos/experiments/stress-chaos-node.yaml
+# 停止方法:
+#   kubectl delete -f chaos/experiments/stress-chaos-node.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-chaos-node
+  namespace: kafka
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - kafka
+    labelSelectors:
+      strimzi.io/name: hacobot-kafka-kafka
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+    memory:
+      workers: 1
+      size: "256MB"
+  duration: "120s"

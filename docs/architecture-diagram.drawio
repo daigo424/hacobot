@@ -1,0 +1,215 @@
+<mxfile host="Electron">
+  <diagram id="xUk5RWkYJqVNkXpJ8xd1" name="ページ-1">
+    <mxGraphModel dx="1198" dy="736" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=left;verticalAlign=middle;" value="hacobot システム構成図 (ローカル)" vertex="1">
+          <mxGeometry height="30" width="600" x="90" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="robot" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#DAE8FC;strokeColor=#6C8EBF;verticalAlign=top;fontStyle=1;" value="ロボット側 (edge/docker/ ros2_nav2) network_mode: host" vertex="1">
+          <mxGeometry height="430" width="620" x="90" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="gazebo" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Gazebo&#xa;(TurtleBot3 waffle)&#xa;物理シミュレーション" vertex="1">
+          <mxGeometry height="55" width="160" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="slam" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="slam_toolbox&#xa;(オンラインSLAM)" vertex="1">
+          <mxGeometry height="55" width="180" x="210" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="nav2" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Nav2&#xa;(planner/controller/&#xa;bt_navigator 等)" vertex="1">
+          <mxGeometry height="55" width="190" x="410" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="safety_bringup" parent="robot" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#FFE6CC;strokeColor=#D79B00;verticalAlign=top;fontStyle=1;" value="safety_bringup (フェイルセーフ層, C++ lifecycle node)" vertex="1">
+          <mxGeometry height="220" width="580" x="20" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="heartbeat_monitor" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="heartbeat_monitor&#xa;(300ms途絶検知)" vertex="1">
+          <mxGeometry height="55" width="170" x="20" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="watchdog" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="watchdog&#xa;(センサー途絶500ms)" vertex="1">
+          <mxGeometry height="55" width="170" x="205" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="nav2_heartbeat_adapter" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="nav2_heartbeat_adapter&#xa;(Nav2生存監視アダプタ)" vertex="1">
+          <mxGeometry height="55" width="170" x="390" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="safety_state_machine" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontStyle=1;" value="safety_state_machine&#xa;NORMAL / DEGRADED / SAFE_STOP / MANUAL_RECOVERY" vertex="1">
+          <mxGeometry height="70" width="350" x="20" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="estop_bridge" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="estop_bridge&#xa;(Kafkaコンシューマ&#xa;専用スレッド)" vertex="1">
+          <mxGeometry height="70" width="170" x="400" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="safety_metrics" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;dashed=1;" value="safety_metrics (exporter)&#xa;各ノードが :9101-9105 でexport" vertex="1">
+          <mxGeometry height="40" width="280" x="20" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="obs" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;fontStyle=1;" value="観測スタック (edge/docker/ prometheus, grafana)" vertex="1">
+          <mxGeometry height="200" width="460" x="750" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="prometheus" parent="obs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Prometheus (:9090)&#xa;5ノードをスクレイプ" vertex="1">
+          <mxGeometry height="55" width="220" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" parent="obs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Grafana (:3001)&#xa;hacobot_health.json" vertex="1">
+          <mxGeometry height="55" width="220" x="220" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="operator" parent="1" style="shape=umlActor;whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;outlineConnect=0;fillColor=#FFFFFF;strokeColor=#000000;labelWidth=200;" value="オペレーター" vertex="1">
+          <mxGeometry height="60" width="30" x="930" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#F8CECC;strokeColor=#B85450;verticalAlign=top;fontStyle=1;" value="クラウド側 (infra/, k3dクラスタ)" vertex="1">
+          <mxGeometry height="160" width="920" x="90" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="kafka" parent="cloud" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Strimzi Kafka&#xa;robot-telemetry / robot-control&#xa;NodePort 30092/30093" vertex="1">
+          <mxGeometry height="70" width="260" x="30" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="seaweedfs" parent="cloud" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="SeaweedFS&#xa;テレメトリ永続化 (S3互換)" vertex="1">
+          <mxGeometry height="70" width="220" x="320" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="chaosmesh" parent="cloud" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Chaos Mesh&#xa;PodChaos / NetworkChaos / StressChaos" vertex="1">
+          <mxGeometry height="70" width="280" x="570" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="gazebo" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="watchdog" value="センサートピック">
+          <mxGeometry relative="1" x="-0.3061" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="210" y="220" />
+              <mxPoint x="400" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="nav2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="nav2_heartbeat_adapter" value="/local_costmap/costmap">
+          <mxGeometry relative="1" x="1" y="-45" as="geometry">
+            <mxPoint x="-20" y="5" as="offset" />
+            <Array as="points">
+              <mxPoint x="700" y="138" />
+              <mxPoint x="700" y="230" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="nav2_heartbeat_adapter" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="heartbeat_monitor" value="/safety/heartbeat/nav2">
+          <mxGeometry relative="1" x="-0.3812" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="720" y="248" />
+              <mxPoint x="720" y="50" />
+              <mxPoint x="70" y="50" />
+              <mxPoint x="70" y="248" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="estop_bridge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="heartbeat_monitor" value="/safety/heartbeat/comm_bridge">
+          <mxGeometry relative="1" x="0.3149" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="700" y="355" />
+              <mxPoint x="700" y="410" />
+              <mxPoint x="80" y="410" />
+              <mxPoint x="80" y="230" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="heartbeat_monitor" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;entryX=0.377;entryY=0.032;entryDx=0;entryDy=0;entryPerimeter=0;" target="safety_state_machine" value="/safety/anomaly_event&lt;div&gt;(WARNING)&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.0946" y="-3" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="120" y="260" />
+              <mxPoint x="120" y="297" />
+              <mxPoint x="262" y="297" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="watchdog" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="safety_state_machine" value="/safety/anomaly_event&lt;div&gt;(CRITICAL)&lt;/div&gt;">
+          <mxGeometry relative="1" x="0.1111" y="10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="400" y="310" />
+              <mxPoint x="400" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="estop_bridge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="safety_state_machine" value="/safety/anomaly_event&lt;div&gt;(CRITICAL)&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.8396" y="-10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="550" y="310" />
+              <mxPoint x="490" y="310" />
+              <mxPoint x="490" y="355" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="nav2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="safety_state_machine" value="/cmd_vel_nav2">
+          <mxGeometry relative="1" x="-0.5" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="530" y="170" />
+              <mxPoint x="305" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="safety_state_machine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="gazebo" value="/cmd_vel&lt;div&gt;(override)&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.2114" y="10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="60" y="335" />
+              <mxPoint x="60" y="138" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="safety_bringup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="safety_metrics" value="export">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="safety_metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="prometheus" value="scrape :9101-9105">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="prometheus" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="grafana" value="query">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1080" y="138" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="chaosmesh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="kafka" value="障害注入">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="700" />
+              <mxPoint x="250" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="kafka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;strokeColor=#B85450;fontColor=#B85450;curved=0;" target="estop_bridge" value="robot-control&lt;br&gt;(NodePort 30092/30093経由、&lt;div&gt;ネイティブDocker Engine時のみ到達可)&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.0465" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="340" y="540" />
+              <mxPoint x="585" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="operator" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="kafka" value="E-Stopコマンド送信">
+          <mxGeometry relative="1" x="-0.1319" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="945" y="510" />
+              <mxPoint x="250" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="operator" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;entryX=0.92;entryY=1.039;entryDx=0;entryDy=0;entryPerimeter=0;" target="safety_state_machine" value="/safety/recovery_command&#xa;(2段階の明示的復旧)">
+          <mxGeometry relative="1" x="-0.5852" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="740" y="360" />
+              <mxPoint x="740" y="430" />
+              <mxPoint x="452" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="grafana" value="ダッシュボード参照">
+          <mxGeometry relative="1" x="0.2453" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1080" y="360" />
+            </Array>
+            <mxPoint x="960" y="360" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

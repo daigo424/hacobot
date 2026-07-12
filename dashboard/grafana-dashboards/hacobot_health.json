@@ -1,0 +1,158 @@
+{
+  "title": "hacobot System Health",
+  "uid": "hacobot-health",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": {"from": "now-30m", "to": "now"},
+  "refresh": "5s",
+  "tags": ["hacobot", "safety"],
+  "annotations": {
+    "list": [
+      {
+        "name": "Anomaly events (chaos experiments etc.)",
+        "enable": true,
+        "iconColor": "red",
+        "datasource": "Prometheus",
+        "target": {
+          "expr": "changes(safety_state_machine_transitions_total{to_state=~\"SAFE_STOP|DEGRADED\"}[$__interval]) > 0",
+          "titleFormat": "SafetyState escalated to {{to_state}}"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Safety State (safety_state_machine)",
+      "description": "0=NORMAL, 1=DEGRADED, 2=SAFE_STOP, 3=MANUAL_RECOVERY。safety_state_machineの状態遷移に対応する。",
+      "type": "state-timeline",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {"text": "NORMAL", "color": "green"},
+                "1": {"text": "DEGRADED", "color": "yellow"},
+                "2": {"text": "SAFE_STOP", "color": "red"},
+                "3": {"text": "MANUAL_RECOVERY", "color": "blue"}
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "safety_state_machine_state",
+          "legendFormat": "safety_state",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Heartbeat Timeout Detections (heartbeat_monitor)",
+      "description": "監視対象(nav2, comm_bridge)ごとのハートビート途絶検知回数の推移。",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10}}
+      },
+      "targets": [
+        {
+          "expr": "increase(heartbeat_monitor_anomaly_total[$__interval])",
+          "legendFormat": "{{source}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Sensor Timeout Detections (watchdog)",
+      "description": "監視対象トピック(/scan, /camera/image_raw, /imu)ごとのセンサー途絶検知回数の推移。",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10}}
+      },
+      "targets": [
+        {
+          "expr": "increase(watchdog_anomaly_total[$__interval])",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "SafetyState Transitions by Target State",
+      "description": "safety_state_machineがどの状態へ遷移したかの累積回数。DEGRADED/SAFE_STOPへの遷移頻度が高いほど不安定であることを示す。",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10}}
+      },
+      "targets": [
+        {
+          "expr": "safety_state_machine_transitions_total",
+          "legendFormat": "-> {{to_state}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Nav2 Liveness (nav2_heartbeat_adapter)",
+      "description": "1=Nav2の代表トピック(/local_costmap/costmap)が生存, 0=途絶",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DEAD", "color": "red"}, "1": {"text": "ALIVE", "color": "green"}}}
+          ]
+        }
+      },
+      "targets": [
+        {"expr": "nav2_heartbeat_adapter_nav2_alive", "refId": "A"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Kafka Reachability (estop_bridge)",
+      "description": "1=Kafkaブローカーへの疎通あり(またはassume_healthyでバイパス中), 0=疎通不可。Docker Desktop使用時はネットワーク境界によりバイパスされる。",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "UNREACHABLE", "color": "red"}, "1": {"text": "REACHABLE/BYPASSED", "color": "green"}}}
+          ]
+        }
+      },
+      "targets": [
+        {"expr": "estop_bridge_kafka_reachable", "refId": "A"}
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Remote E-Stop Commands Received (estop_bridge)",
+      "description": "Kafka robot-controlトピック経由で受信したリモートE-Stopコマンドの累積回数。",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {"expr": "estop_bridge_estop_received_total or vector(0)", "refId": "A"}
+      ]
+    }
+  ]
+}

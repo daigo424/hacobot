@@ -1,0 +1,13 @@
+# dashboard/grafana-dashboards/配下のJSONを自動でロードする
+# (手動でのダッシュボードインポート操作を不要にする)。
+apiVersion: 1
+
+providers:
+  - name: hacobot
+    orgId: 1
+    folder: hacobot
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

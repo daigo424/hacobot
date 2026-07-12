@@ -1,0 +1,51 @@
+services:
+  ros2-nav2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hacobot-edge-ros2-nav2:latest
+    container_name: ros2_nav2_container
+    network_mode: host
+    ipc: host
+    pid: host
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      - PULSE_SERVER=${PULSE_SERVER}
+      - LIBGL_ALWAYS_SOFTWARE=0
+    volumes:
+      - ../ros2_ws:/workspace
+      - ../../testing:/testing
+      - ../../chaos:/chaos
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg:rw
+    working_dir: /workspace
+
+  # safety層5ノードのPrometheusメトリクス(ポート9101-9105)をスクレイプする。
+  # k3d(infra/)側ではなくこちらに置く理由はprometheus.ymlのコメント参照
+  # (network_mode: hostのros2-nav2と同じネットワーク名前空間に置くことで、
+  # k3dクラスタを経由せず直接9101-9105へ到達できるようにするため)。
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: hacobot_prometheus
+    network_mode: host
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.listen-address=:9090
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: hacobot_grafana
+    network_mode: host
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_HTTP_PORT=3001
+      # localhost:9090のPrometheusを自動でデータソース登録する(手動セットアップ不要にする)
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../dashboard/grafana-dashboards:/var/lib/grafana/dashboards:ro

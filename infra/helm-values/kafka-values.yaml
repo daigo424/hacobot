@@ -1,0 +1,15 @@
+# Strimzi Kafka Operator Helm chart values
+#
+# 公式チャート: strimzi/strimzi-kafka-operator (https://strimzi.io/charts/)
+# デプロイは infra/deploy.sh (内部で `helmfile -f infra/helmfile.yaml sync` を実行)経由で行う。
+#
+# このHelmチャートがデプロイするのはOperator本体のみ。実際のKafkaクラスタと
+# トピックはOperatorが監視するCRD経由で作成する必要があるため、infra/deploy.sh は
+# helmfile syncの後に続けて以下を適用する:
+#   kubectl apply -f infra/k8s/kafka/kafka-cluster.yaml
+#   kubectl apply -f infra/k8s/kafka/kafka-topics.yaml
+#
+# watchNamespaces/watchAnyNamespaceは指定しない(chartデフォルト = 自身がデプロイされた
+# namespace = kafka のみを監視)。今回はkafka名前空間内で完結する構成のためこれで十分。
+
+replicas: 1

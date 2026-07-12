@@ -1,0 +1,29 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: robot-telemetry
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: hacobot-kafka
+spec:
+  # 画像+位置情報の高頻度データ。将来のブローカー増設で並列処理できるよう複数パーティションにする
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 7200000        # 2時間
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: robot-control
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: hacobot-kafka
+spec:
+  # E-Stop等の制御コマンド用。安全上コマンドの到着順序保証が最優先のため単一パーティションにする
+  partitions: 1
+  replicas: 1
+  config:
+    retention.ms: 604800000      # 7日間(監査ログとして長めに保持)
+    segment.bytes: 1073741824

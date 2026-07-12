@@ -1,0 +1,40 @@
+# Chaos Mesh (CNCF Incubating) をk3dクラスタへデプロイするためのvalues。
+#
+# LitmusChaosではなくChaos Meshを採用している(障害注入の実験タイプが豊富で、
+# PodChaos/NetworkChaos/StressChaosをYAMLで宣言的に定義できるため)。
+#
+# k3d/k3sはcontainerdを使っており、コンテナランタイムのソケットパスがChart既定の
+# Docker想定(/var/run/docker.sock)とは異なる(k3dノードコンテナ内で実際に確認した実パス:
+# /run/k3s/containerd/containerd.sock)。ここを合わせないとchaos-daemonが
+# コンテナ操作(PodChaos等)に失敗するため、必ずcontainerd向けに上書きする。
+
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/k3s/containerd/containerd.sock
+  # 検証用シングルノードクラスタのため、リソース要求を小さめに絞る
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+controllerManager:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Dashboardは可観測性をGrafanaに統合して見せる方針のため、
+# 検証環境のリソース節約を優先し無効化する。実験の適用・確認はkubectl/chaosctl経由で行う。
+dashboard:
+  create: false
+
+# 単一ノード検証環境のため、リーダー選出用の複製は不要
+webhook:
+  replicaCount: 1

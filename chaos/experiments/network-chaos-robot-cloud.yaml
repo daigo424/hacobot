@@ -1,0 +1,40 @@
+# ロボット⇄クラウド間の通信に遅延・パケットロスを注入する実験(NetworkChaos)。
+#
+# 注意(スコープの制約): Chaos MeshはKubernetesクラスタ内のPodにしか障害注入できない。
+# ロボット側(edge/docker/ros2_nav2_container)はk3dクラスタの外(Docker Desktop使用時は
+# 別VM上、network_mode: host)で動いているDockerコンテナのため、Chaos Meshから直接ロボット側に
+# ネットワーク障害を注入することはできない。
+#
+# そのため本実験では、クラウド側の入り口であるKafka Broker Podに対してNetworkChaosを適用し、
+# 「ロボットから見てクラウド(Kafka)への通信が遅延・劣化している」状態を、クラウド側から
+# 擬似的に再現する。ロボット側のestop_bridgeが行うTCP到達性チェック・Kafkaコンシューマの
+# タイムアウトは、通信経路のどちら側で遅延・損失が発生していても同じように振る舞うべき
+# (通信途絶はロボット側が自律検知する設計)ため、検証の目的においてはこの代替で要件を満たせる。
+#
+# 適用方法:
+#   kubectl apply -f chaos/experiments/network-chaos-robot-cloud.yaml
+# 停止方法:
+#   kubectl delete -f chaos/experiments/network-chaos-robot-cloud.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-chaos-robot-cloud
+  namespace: kafka
+spec:
+  # delay(遅延)とloss(パケットロス)を同時に発生させたいため、
+  # 単一種別のaction(delay/loss等)ではなく、複数を組み合わせられるnetemを使う。
+  action: netem
+  mode: all
+  selector:
+    namespaces:
+      - kafka
+    labelSelectors:
+      strimzi.io/name: hacobot-kafka-kafka
+  delay:
+    latency: "250ms"
+    jitter: "50ms"
+    correlation: "25"
+  loss:
+    loss: "10"
+    correlation: "25"
+  duration: "60s"
