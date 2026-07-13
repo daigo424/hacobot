@@ -1,6 +1,6 @@
 <mxfile host="Electron">
   <diagram id="ORsYID_6SF7MrLpBnqjR" name="ページ-1">
-    <mxGraphModel dx="1631" dy="971" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950" math="0" shadow="0" adaptiveColors="auto">
+    <mxGraphModel dx="1255" dy="764" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950" math="0" shadow="0" adaptiveColors="auto">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -49,7 +49,7 @@
         <mxCell id="H_UbawlZw_NXMWNRDzA8-3" parent="az_a" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.fargate;whiteSpace=wrap;labelWidth=300;" value="&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;ECS Fargateタスク (AZ-a)&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;クラウド側監視サービス&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;+ ADOTコレクタ(サイドカー)&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;MSKを購読しロボット群全体の異常を検知&lt;/span&gt;" vertex="1">
           <mxGeometry height="78" width="78" x="110" y="45" as="geometry" />
         </mxCell>
-        <mxCell id="e10" edge="1" parent="az_a" source="H_UbawlZw_NXMWNRDzA8-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1A73E8;fontColor=#1A73E8;strokeWidth=2;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="H_UbawlZw_NXMWNRDzA8-3" value="同一コンシューマグループとして購読&#xa;(片方が落ちても他方が全パーティション引継ぎ)">
+        <mxCell id="e10" edge="1" parent="az_a" source="H_UbawlZw_NXMWNRDzA8-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1A73E8;fontColor=#1A73E8;strokeWidth=2;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="H_UbawlZw_NXMWNRDzA8-3" value="MSKから担当パーティション購読&lt;br&gt;(片方が落ちても他方が全パーティション引継ぎ)">
           <mxGeometry relative="1" x="0.3272" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
@@ -67,8 +67,8 @@
         <mxCell id="H_UbawlZw_NXMWNRDzA8-6" parent="az_b" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.fargate;whiteSpace=wrap;labelWidth=300;" value="&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;ECS Fargateタスク (AZ-b)&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;クラウド側監視サービス&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;+ ADOTコレクタ(サイドカー)&lt;/span&gt;&lt;br style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); white-space: normal;&quot;&gt;MSKを購読しロボット群全体の異常を検知&lt;/span&gt;" vertex="1">
           <mxGeometry height="78" width="78" x="116" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="e11" edge="1" parent="az_b" source="H_UbawlZw_NXMWNRDzA8-5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1A73E8;fontColor=#1A73E8;strokeWidth=2;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="H_UbawlZw_NXMWNRDzA8-6" value="同一コンシューマグループとして購読&#xa;(片方が落ちても他方が全パーティション引継ぎ)">
-          <mxGeometry relative="1" x="0.3389" y="-10" as="geometry">
+        <mxCell id="e11" edge="1" parent="az_b" source="H_UbawlZw_NXMWNRDzA8-5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1A73E8;fontColor=#1A73E8;strokeWidth=2;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="H_UbawlZw_NXMWNRDzA8-6" value="MSKから担当パーティション購読&lt;br&gt;(片方が落ちても他方が全パーティション引継ぎ)">
+          <mxGeometry relative="1" x="0.3403" y="-10" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
               <mxPoint x="50" y="230" />
