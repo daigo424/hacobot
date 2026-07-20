@@ -11,7 +11,7 @@ HeartbeatMonitorNode::HeartbeatMonitorNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("heartbeat_monitor", options),
   timeout_ms_(300),
   check_period_ms_(50),
-  startup_grace_period_ms_(5000),
+  startup_grace_period_ms_(30000),
   metrics_port_(9101)
 {
   // センサー系の生存監視はwatchdogが実トピックを直接監視する設計のため、
@@ -21,9 +21,12 @@ HeartbeatMonitorNode::HeartbeatMonitorNode(const rclcpp::NodeOptions & options)
     std::vector<std::string>{"nav2", "comm_bridge"});
   this->declare_parameter<int64_t>("timeout_ms", 300);
   this->declare_parameter<int64_t>("check_period_ms", 50);
-  // Nav2フルスタックの起動に数秒かかる(実機統合テストで実測: 3秒強)ため、
-  // それより十分大きい値をデフォルトにする
-  this->declare_parameter<int64_t>("startup_grace_period_ms", 5000);
+  // nav2_heartbeat_adapter自身も同じ理由のstartup_grace_period_msを持ち
+  // (デフォルト30000ms)起動中は常にハートビートをpublishし続けるため、
+  // 通常はこちらの猶予が効くことはない想定だが、念のため同じ値で二重に
+  // 保険をかけておく(Nav2フルスタックの起動完了はこのhostのCPU競合下で
+  // 数秒〜10数秒まで大きくばらつくことが実測されている)。
+  this->declare_parameter<int64_t>("startup_grace_period_ms", 30000);
   this->declare_parameter<int64_t>("metrics_port", 9101);
 }
 
