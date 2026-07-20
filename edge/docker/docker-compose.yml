@@ -13,18 +13,28 @@ services:
     # デフォルトのDockerケーパビリティではcap_sys_ptraceが外れておりptrace(2)が失敗するため。
     cap_add:
       - SYS_PTRACE
+    # WSLgのGPUパススルー(/dev/dxg)をコンテナへ渡す。これがないとMesaはGPUドライバ
+    # (d3d12_dri.so。コンテナ側に既に入っている)を見つけられず、camera/LiDARの
+    # レンダリング・レイキャストがCPUソフトウェアラスタライザ(swrast)にフォールバックし、
+    # gzserverのCPU消費が跳ね上がる(実測: 700〜800%)。
+    devices:
+      - /dev/dxg
     environment:
       - DISPLAY=${DISPLAY}
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
       - PULSE_SERVER=${PULSE_SERVER}
       - LIBGL_ALWAYS_SOFTWARE=0
+      # libdxcore.so/libd3d12.so(GPUドライバがdlopenする実体)の場所をMesaのd3d12
+      # Galliumドライバに教える。/usr/lib/wsl/lib自体は下のvolumesでマウントする。
+      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
     volumes:
       - ../ros2_ws:/workspace
       - ../../testing:/testing
       - ../../chaos:/chaos
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /mnt/wslg:/mnt/wslg:rw
+      - /usr/lib/wsl:/usr/lib/wsl:ro
     working_dir: /workspace
 
   # safety層5ノードのPrometheusメトリクス(ポート9101-9105)をスクレイプする。

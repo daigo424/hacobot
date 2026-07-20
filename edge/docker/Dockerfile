@@ -29,6 +29,14 @@ RUN mkdir -p /root/.gazebo/config && \
 RUN sed -i "s/'-z', '0.01'/'-z', '0.01', '-timeout', '180'/" \
     /opt/ros/humble/share/turtlebot3_gazebo/launch/spawn_turtlebot3.launch.py
 
+# 補足3: LiDAR(hls_lfcd_lds)センサーのデフォルトtype="ray"はODE(物理エンジン)側の
+# CPUレイキャストで、GPUパススルー(docker-compose.ymlの/dev/dxgマウント)を有効化しても
+# 恩恵を受けない。type="gpu_ray"に変更するとGPUでのレンダリングベースのレイキャストになり、
+# camera/imuと同様の途絶が発生しなくなることを実機検証済み(同じlibgazebo_ros_ray_sensor.so
+# プラグインがgpu_rayにもそのまま対応している)。
+RUN sed -i 's/<sensor name="hls_lfcd_lds" type="ray">/<sensor name="hls_lfcd_lds" type="gpu_ray">/' \
+    /opt/ros/humble/share/turtlebot3_gazebo/models/turtlebot3_waffle/model.sdf
+
 ENV TURTLEBOT3_MODEL=waffle
 ENV QT_X11_NO_MITSHM=1
 
