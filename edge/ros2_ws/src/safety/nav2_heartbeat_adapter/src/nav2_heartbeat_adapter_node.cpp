@@ -10,15 +10,32 @@ namespace nav2_heartbeat_adapter
 Nav2HeartbeatAdapterNode::Nav2HeartbeatAdapterNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("nav2_heartbeat_adapter", options),
   liveness_topic_("/local_costmap/costmap"),
-  liveness_topic_type_("nav2_msgs/msg/Costmap"),
-  liveness_window_ms_(500),
+  // このHumbleビルドのnav2_costmap_2dは/local_costmap/costmapに
+  // nav_msgs/msg/OccupancyGridとnav2_msgs/msg/Costmapの2つの型が
+  // 同じトピック名で"存在"しうるが、実測では後者は一度もpublishされない
+  // (40秒待っても0件)。前者(OccupancyGrid)は起動直後から確実にpublishされる
+  // ことを確認済みのため、liveness監視にはこちらを使う。
+  liveness_topic_type_("nav_msgs/msg/OccupancyGrid"),
+  // local_costmapの公称publish間隔(publish_frequency=2Hz=500ms)に対し、
+  // このhostはk3s/Kafka/VSCode等の並行負荷が常時あり定常状態でも500ms周期の
+  // ジッターが大きい可能性があるため、余裕を持たせた値にする。
+  liveness_window_ms_(3000),
   heartbeat_period_ms_(100),
+  // Nav2フルスタックの起動完了(local_costmapが実際にpublishを始めるまで)は
+  // このhostのCPU競合下で数秒〜10数秒まで大きくばらつく(実測で15秒を超える
+  // ケースも確認済み)。起動シーケンス中はまだナビゲーションゴールも受け付けて
+  // いないため誤検知の安全上のコストはなく、余裕を持って30秒に設定する
+  // (heartbeat_monitor側のstartup_grace_period_msと同じ理由)。この猶予期間中は
+  // liveness_topicの受信有無に関わらずハートビートをpublishし続け、起動中を
+  // 異常と誤検知しないようにする。
+  startup_grace_period_ms_(30000),
   metrics_port_(9104)
 {
   this->declare_parameter<std::string>("liveness_topic", liveness_topic_);
   this->declare_parameter<std::string>("liveness_topic_type", liveness_topic_type_);
   this->declare_parameter<int64_t>("liveness_window_ms", liveness_window_ms_);
   this->declare_parameter<int64_t>("heartbeat_period_ms", heartbeat_period_ms_);
+  this->declare_parameter<int64_t>("startup_grace_period_ms", startup_grace_period_ms_);
   this->declare_parameter<int64_t>("metrics_port", metrics_port_);
 }
 
@@ -29,6 +46,7 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_configure(
   liveness_topic_type_ = this->get_parameter("liveness_topic_type").as_string();
   liveness_window_ms_ = this->get_parameter("liveness_window_ms").as_int();
   heartbeat_period_ms_ = this->get_parameter("heartbeat_period_ms").as_int();
+  startup_grace_period_ms_ = this->get_parameter("startup_grace_period_ms").as_int();
   metrics_port_ = this->get_parameter("metrics_port").as_int();
   metrics_.start(static_cast<int>(metrics_port_));
 
@@ -40,8 +58,10 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_configure(
 
   RCLCPP_INFO(
     this->get_logger(),
-    "Configured (liveness_topic=%s, liveness_window_ms=%ld, heartbeat_period_ms=%ld)",
-    liveness_topic_.c_str(), liveness_window_ms_, heartbeat_period_ms_);
+    "Configured (liveness_topic=%s, liveness_window_ms=%ld, heartbeat_period_ms=%ld, "
+    "startup_grace_period_ms=%ld)",
+    liveness_topic_.c_str(), liveness_window_ms_, heartbeat_period_ms_,
+    startup_grace_period_ms_);
 
   return CallbackReturn::SUCCESS;
 }
@@ -50,6 +70,7 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_activate(
   const rclcpp_lifecycle::State & /*state*/)
 {
   heartbeat_pub_->on_activate();
+  activated_at_ = this->now();
 
   liveness_sub_ = this->create_generic_subscription(
     liveness_topic_, liveness_topic_type_, rclcpp::SensorDataQoS(),
@@ -100,11 +121,15 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_shutdown(
 
 void Nav2HeartbeatAdapterNode::on_heartbeat_timer()
 {
-  const auto elapsed_ms = (this->now() - last_seen_).nanoseconds() / 1000000;
-  const bool alive = elapsed_ms <= liveness_window_ms_;
+  const auto now = this->now();
+  const auto since_activation_ms = (now - activated_at_).nanoseconds() / 1000000;
+  const auto elapsed_ms = (now - last_seen_).nanoseconds() / 1000000;
+  const bool in_startup_grace = since_activation_ms < startup_grace_period_ms_;
+  const bool alive = in_startup_grace || (elapsed_ms <= liveness_window_ms_);
   metrics_.set_gauge(
     "nav2_heartbeat_adapter_nav2_alive", alive ? 1.0 : 0.0,
-    "1 if Nav2's liveness topic has been seen within liveness_window_ms");
+    "1 if Nav2's liveness topic has been seen within liveness_window_ms "
+    "(or still within startup_grace_period_ms)");
 
   if (!alive) {
     // Nav2の代表トピックが途絶している = Nav2が死んでいるとみなし、
