@@ -185,3 +185,11 @@ make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
   復旧速度(20〜50秒程度)と`estop_bridge`の接続チェック間隔(2秒)のタイミング次第で
   毎回検知できるとは限らない。フェイルセーフの実効性そのものは`demos/03`/`demos/07`で
   安定して確認できる
+- Gazebo(`gzserver`)はデフォルトではWSL2上でGPUパススルーが有効にならず、ソフトウェア
+  レンダリング(Mesa `swrast`)にフォールバックしてCPU使用率が跳ね上がる(実測700〜800%)。
+  `edge/docker/docker-compose.yml`で`/dev/dxg`・`/usr/lib/wsl`をコンテナへ渡すことで解消
+  (8〜10倍のCPU削減を確認)。あわせてLiDARセンサーも`type="ray"`(CPUレイキャスト)から
+  `type="gpu_ray"`へパッチ済み(`Dockerfile`参照)。それでもなお`/scan`が数十秒に一度、
+  1〜2秒程度途絶しSAFE_STOPを誘発することがある。gzserver自体の内部ブロッキングは
+  strace調査で否定済みで、DDS通信層かサブスクライバ側(`watchdog`)に原因がある可能性が
+  高いが未特定(2026年7月時点、調査継続中)
