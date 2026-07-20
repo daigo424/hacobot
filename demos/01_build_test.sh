@@ -10,7 +10,7 @@ source lib/common.sh
 log "1. ワークスペース全体をビルド・テストします"
 
 cd "$REPO_ROOT"
-make ros2-up
+make up
 
 # ライブ稼働中の安全ノードが残っていると、gtestと同じDDSトピック
 # (/safety/anomaly_event等)で混信して見せかけのテスト失敗になることがある。
@@ -20,7 +20,7 @@ if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     "pkill -9 -f 'heartbeat_monitor_node|safety_state_machine_node|watchdog_node|estop_bridge_node|nav2_heartbeat_adapter_node' 2>/dev/null || true"
 fi
 
-if ! make ros2-build-test; then
+if ! make build-test; then
   fail "ビルドまたはテストが失敗しました(上記のcolconログを確認してください)"
   exit 1
 fi

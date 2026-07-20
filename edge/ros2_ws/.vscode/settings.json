@@ -1,0 +1,9 @@
+{
+    "python.analysis.extraPaths": [
+        "/opt/ros/humble/lib/python3.10/site-packages"
+    ],
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/humble/lib/python3.10/site-packages"
+    ],
+    "coverage-gutters.coverageBaseDir": "coverage"
+}

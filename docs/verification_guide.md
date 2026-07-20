@@ -20,8 +20,8 @@ Docker Desktopでは別ネットワーク名前空間のため到達できない
 
 ```bash
 cd /home/gum/projects/hacobot
-make ros2-up            # コンテナが無ければ起動
-make ros2-build-test    # ワークスペース全体
+make up            # コンテナが無ければ起動
+make build-test    # ワークスペース全体
 ```
 
 **成功の目安**: `Summary: 9 packages finished` と

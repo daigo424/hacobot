@@ -1,0 +1,18 @@
+{
+  "name": "ROS2 Docker Compose Environment",
+  "postCreateCommand": "sudo apt update -qq && sudo apt install -y --no-install-recommends lcov gdb clangd && echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc",
+  "dockerComposeFile": "../edge/docker/docker-compose.yml",
+  "service": "ros2-nav2", // ⚠️あなたのdocker-compose.ymlに書かれているROS2のサービス名に変えてください
+  "workspaceFolder": "/workspace", // ⚠️コンテナ内でソースコードがマウントされているパスに変えてください
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd", // 補完用
+        "ms-vscode.cpptools",       // C++の自動補正
+        "ms-python.python",         // Pythonの自動補正
+        "ms-iot.vscode-ros"         // ROS2公式サポート拡張
+      ]
+    }
+  },
+  "remoteUser": "root" // 必要に応じてコンテナ内のユーザー名（ubuntuやrosなど）に変更してください
+}

@@ -1,14 +1,29 @@
-CLUSTER_NAME ?= hacobot-cluster
+# 素のk3dクラスタだけ欲しい場合(runs/配下の軽量な動作確認スクリプトなど)は
+# infra/k3d/setup.sh・teardown.sh を直接呼ぶこと(CLUSTER_NAME環境変数で名前変更可)。
+# フルスタック(Kafka/SeaweedFS/Chaos Mesh)が要る場合は下記のinfra-deploy/infra-destroyを使う。
 
-.PHONY: cluster-create cluster-delete
+.PHONY: infra-deploy infra-destroy
 
-# k3dクラスタの実際の構築/削除ロジックは infra/k3d/setup.sh・teardown.sh に一本化している
-# (Makefile側に引数を重複定義すると、どちらかだけ更新して片方が古いまま残るため)。
-cluster-create:
-	CLUSTER_NAME=$(CLUSTER_NAME) bash infra/k3d/setup.sh
+# infra-deploy: k3dクラスタ構築 + SeaweedFS/Kafka/Chaos Meshのデプロイ(infra/deploy.sh)
+# infra-destroy: 上記のうちKafka/Helmリリースだけを後片付け(k3dクラスタ自体は残す)。
+#                クラスタごと消したい場合は infra/k3d/teardown.sh を直接使うこと。
+infra-deploy:
+	bash infra/deploy.sh
 
-cluster-delete:
-	CLUSTER_NAME=$(CLUSTER_NAME) bash infra/k3d/teardown.sh
+infra-destroy:
+	bash infra/destroy.sh
+
+# S3互換ゲートウェイへport-forwardする(認証情報はinfra/helm-values/seaweedfs-values.yaml参照。
+# PoC用の固定値でありSecret化していないため本番投入前は必ず差し替えること)。
+.PHONY: seaweedfs-ui
+seaweedfs-ui:
+	@echo -----------------------------
+	@echo "SeaweedFS S3 API: http://localhost:8333"
+	@echo "Access Key: hacobot-admin"
+	@echo "Secret Key: hacobot-admin-secret"
+	@echo -----------------------------
+	@echo "Port-forward starting... Ctrl+C to stop"
+	kubectl port-forward -n seaweedfs svc/seaweedfs-s3 8333:8333
 
 # --- ROS2ワークスペース (edge/ros2_ws) ---
 #
@@ -18,12 +33,12 @@ cluster-delete:
 # PKGを省略するとワークスペース全体が対象になる。
 #
 # 例:
-#   make ros2-build PKG=heartbeat_monitor
-#   make ros2-test  PKG=edge/ros2_ws/src/safety/watchdog
-#   make ros2-build-test PKG=safety_state_machine
-#   make ros2-build   # 全パッケージ
+#   make build PKG=heartbeat_monitor
+#   make test  PKG=edge/ros2_ws/src/safety/watchdog
+#   make build-test PKG=safety_state_machine
+#   make build   # 全パッケージ
 
-.PHONY: ros2-up ros2-build ros2-test ros2-build-test
+.PHONY: up build test build-test
 
 ROS2_CONTAINER ?= ros2_nav2_container
 ROS2_WS        := /workspace
@@ -31,20 +46,20 @@ PKG            ?=
 PKG_NAME       := $(if $(PKG),$(notdir $(PKG)),)
 COLCON_SELECT  := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
 
-ros2-up:
+up:
 	cd edge/docker && docker compose up -d
 
-ros2-down:
+down:
 	cd edge/docker && docker compose down
 
-ros2-build:
+build:
 	docker exec $(ROS2_CONTAINER) bash -c "\
 		source /opt/ros/humble/setup.bash && \
 		( [ -f $(ROS2_WS)/install/setup.bash ] && source $(ROS2_WS)/install/setup.bash || true ) && \
 		cd $(ROS2_WS) && \
 		colcon build $(COLCON_SELECT)"
 
-ros2-test:
+test:
 	# --executor sequential: 複数パッケージを並列実行すると、別パッケージのgtest同士が
 	# 同じROSトピック名(例: /safety/anomaly_event)で混信することがあるため直列実行する
 	docker exec $(ROS2_CONTAINER) bash -c "\
@@ -54,5 +69,4 @@ ros2-test:
 		colcon test --executor sequential $(COLCON_SELECT) && \
 		colcon test-result --verbose"
 
-ros2-build-test: ros2-build ros2-test
-
+build-test: build test

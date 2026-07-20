@@ -27,7 +27,7 @@ ros2_exec() {
 require_container() {
   if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     fail "コンテナ '$CONTAINER_NAME' が起動していません。"
-    echo "  次を実行してから再度お試しください: make ros2-up"
+    echo "  次を実行してから再度お試しください: make up"
     exit 1
   fi
 }

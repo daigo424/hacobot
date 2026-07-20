@@ -24,6 +24,10 @@ log/
 .coverage
 htmlcov/
 
+# lcov/genhtmlカバレッジ生成物 (edge/ros2_ws/.vscode/tasks.json の
+# "ROS2: Run Coverage" / "ROS2: Generate Coverage Report (Current Test Package)" が生成)
+edge/ros2_ws/coverage/
+
 *.swp
 
 tmp/
@@ -38,3 +42,7 @@ docs/**/*.bkp
 testing/soak_test/reports/*
 !testing/soak_test/reports/.gitkeep
 testing/eval-reports/
+
+# 開発環境として必要な設定ディレクトリとファイル
+!.devcontainer
+!edge/ros2_ws/.vscode/

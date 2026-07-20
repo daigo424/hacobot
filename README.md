@@ -79,106 +79,86 @@ Kafkaへ到達できるようになり、本物のKafkaメッセージで`estop_
 
 ## ローカルセットアップ手順
 
-### 前提
+ビルドからカオス実験・耐久試験・本物のKafka E-Stopまで、手順ごとに「何が見えれば成功か」
+込みでまとめたものは `docs/verification_guide.md` を参照。各手順に対応する自動判定付き
+bashスクリプトは `demos/`配下にある(`demos/README.md`参照、`bash demos/run_all.sh`で
+まとめて実行可能)。
 
-- WSL2 + ネイティブDocker Engine推奨(手順5の一部・手順7に影響。詳細は「既知の制約」参照)
-- `kubectl`, `helm`, `helmfile`, `k3d`がインストール済み
+## 開発環境セットアップ
 
-### 1. k3dクラスタ + クラウド側基盤の構築
+VSCode + Dev Containers前提(C++補完・ビルド・テスト・ブレークポイントデバッグまで
+コンテナ内で完結)。
 
-```bash
-bash infra/deploy.sh
-# SeaweedFS, Strimzi Kafka(robot-telemetry/robot-controlトピック含む)、
-# Chaos Meshが全て起動する(infra/helmfile.yamlに一括定義済み)
-```
+### 1. 前提
 
-Chaos Meshが起動しているかは以下で確認できる:
+- リポジトリはWSL2ネイティブパス(`/home/<user>/...`)にクローンしていること(Windows側マウントは低速)
+- VSCode拡張「Dev Containers」(`ms-vscode-remote.remote-containers`)導入済み
 
-```bash
-kubectl get pods -n chaos-mesh
-```
-
-なお、k3dクラスタの作成/削除だけを個別に行いたい場合は
-`make cluster-create` / `make cluster-delete`(内部的に`infra/k3d/setup.sh` /
-`infra/k3d/teardown.sh`を呼ぶ)も使える。
-
-### 2. ロボット側(Gazebo + Nav2 + フェイルセーフ層)の起動
+### 2. 起動手順
 
 ```bash
-make ros2-up   # edge/docker/ の docker compose を起動
-
-docker exec -d ros2_nav2_container bash -c \
-  "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
-   ros2 launch nav2_bringup_custom gazebo_sim.launch.py"
-
-# 数秒待ってから
-docker exec -d ros2_nav2_container bash -c \
-  "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
-   ros2 launch nav2_bringup_custom nav2_bringup.launch.py"
+make up   # edge/docker/docker-compose.yml の ros2-nav2/prometheus/grafana を起動(停止はmake down)
 ```
 
-これで以下が全て起動する: Nav2フルスタック、`safety_bringup`(heartbeat_monitor,
-safety_state_machine, watchdog, nav2_heartbeat_adapter, estop_bridge)。
+その後VSCodeでリポジトリを開き、コマンドパレット → `Dev Containers: Reopen in Container`。
+コンテナは`make up`で既に起動済みのため、VSCodeはそのままアタッチするだけになる。
 
-安全状態の確認:
+続いて(初回のみ):
 
 ```bash
-docker exec ros2_nav2_container bash -c \
-  "source /opt/ros/humble/setup.bash && ros2 topic echo /safety/state"
+make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
 ```
 
-### 3. ビルド・テスト
+補完(clangd)は`colcon build`が生成する`compile_commands.json`を自動検出するため
+追加設定不要。
 
-```bash
-make ros2-build-test              # ワークスペース全体
-make ros2-build-test PKG=watchdog # パッケージ単体(名前 or パスどちらでも可)
-```
+### 3. ビルド・テスト(VSCode タスク)
 
-### 4. 可観測性(Prometheus + Grafana)
+コマンドパレット → `Tasks: Run Task`(`edge/ros2_ws/.vscode/tasks.json`):
 
-```bash
-cd edge/docker && docker compose up -d prometheus grafana
-```
+| タスク名 | 内容 |
+|---|---|
+| `ROS2: colcon build (Debug)` | デフォルトビルド(Ctrl+Shift+B)。`make build`相当 |
+| `ROS2: Clean and Build` | `build/install/log`を消してクリーンビルド |
+| `ROS2: Run Coverage` | 全体を`--coverage`ビルド+`colcon test`+lcov集計 |
+| `ROS2: Build Current Test Package (Coverage)` / `Generate Coverage Report` | 下記デバッグ実行(C)の内部タスク |
 
-Grafanaは`hacobot_health.json`ダッシュボードを自動プロビジョニングする
-(データソース登録・ダッシュボードインポートとも手動操作不要)。`network_mode: host`の
-ため、ホストのブラウザから`http://localhost:3001`(admin/admin)でアクセス可能。
+### 4. launch.jsonからのノード起動
 
-### 5. カオス実験の実行
+実行とデバッグパネルから選択(`edge/ros2_ws/.vscode/launch.json`):
 
-```bash
-kubectl apply -f chaos/experiments/pod-chaos-kafka.yaml
-kubectl get podchaos -n kafka
+- `ROS2: Launch Gazebo Sim (nav2_bringup_custom)`: Gazebo+TurtleBot3起動
+- `ROS2: Launch Nav2 Bringup (nav2_bringup_custom)`: Nav2フルスタック+`safety_bringup`5ノード起動
 
-# フェイルセーフの自動検証(kubectlとROS2両方に触れるためホスト側で実行)
-python3 chaos/test_scenarios/verify_failsafe_during_chaos.py --all --watch-sec 30
-```
+どちらも`node-terminal`型(シェルで実行するだけでデバッガは付かない)。`ros2 launch`は
+複数プロセスを生成するため直接ブレークポイントは効かない。デバッグしたい場合は次項を使う。
 
-結果は`testing/eval-reports/chaos_test/*.json`に出力される。
+### 5. ブレークポイントでのデバッグ
 
-### 6. 耐久試験
+前提: `cap_add: [SYS_PTRACE]`を`docker-compose.yml`に付与済み(Dockerデフォルトでは
+`ptrace(2)`禁止のためgdbアタッチが失敗する)。
 
-```bash
-docker exec ros2_nav2_container bash -c \
-  "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
-   python3 /testing/soak_test/run_soak_test.py --duration 1h"
-```
+| 方法 | 用途 |
+|---|---|
+| `ROS2: Attach to Running Node` | 上記4で既に起動中のノードにアタッチ。パッケージ名・実行ファイル名を入力後、`${command:pickProcess}`でPID選択(下記参照) |
+| `ROS2: C++ Node Debug` | `ros2 launch`を介さずノード単体をgdb起動から実行。コンストラクタ等の起動直後もブレークポイント可。remap/パラメータは適用されないためノード単体の切り分け用 |
+| `ROS2: Debug Current Test File` | デバッグしたいgtestの`.cpp`をアクティブにして実行。該当パッケージのみcoverageビルド→gdb実行→終了後`edge/ros2_ws/coverage/`にlcovレポート自動生成(Coverage Gutters拡張で表示) |
 
-結果は`testing/soak_test/reports/[実行日時]/report.json`に出力される。
+**`ROS2: Attach to Running Node`で何を選べばいいか**: `${command:pickProcess}`はVSCode C/C++拡張の
+標準機能で、名前を指定して自動選択する仕組みは存在しない(cppdbgの`processId`はpickProcessによる
+手動選択が唯一の方法)。一覧にはコンテナ内の全プロセスが並ぶが、**候補が出た状態でパッケージ名や
+実行ファイル名の一部を入力すると絞り込める**ので、以下の実行ファイル名を入力してから選ぶとよい:
 
-### 7. Kafka経由の本物のリモートE-Stop(ネイティブDocker Engine限定)
+| パッケージ名 | 実行ファイル名(入力するのはこちら) |
+|---|---|
+| `heartbeat_monitor` | `heartbeat_monitor_node` |
+| `safety_state_machine` | `safety_state_machine_node` |
+| `watchdog` | `watchdog_node` |
+| `nav2_heartbeat_adapter` | `nav2_heartbeat_adapter_node` |
+| `estop_bridge` | `estop_bridge_node` |
 
-```bash
-KAFKA_POD=$(kubectl get pods -n kafka -l strimzi.io/name=hacobot-kafka-kafka \
-  -o jsonpath='{.items[0].metadata.name}')
-echo "ESTOP" | kubectl exec -i -n kafka "$KAFKA_POD" -c kafka -- \
-  bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic robot-control
-```
-
-`estop_bridge`が実際にKafka経由でE-Stopを受信し、`/safety/state`が`SAFE_STOP`になる。
-
-`demos/`配下には手順1〜7それぞれに対応する自動判定付きbashスクリプトも用意している
-(`demos/README.md`参照。`bash demos/run_all.sh`でまとめて実行可能)。
+一覧では`.../install/<パッケージ名>/lib/<パッケージ名>/<実行ファイル名>`というフルパスが
+コマンドラインとして表示されるので、上記の実行ファイル名で検索すれば1件に絞り込める。
 
 ## ドキュメント
 

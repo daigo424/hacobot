@@ -1,0 +1,89 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ROS2: Launch Gazebo Sim (nav2_bringup_custom)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom gazebo_sim.launch.py",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ROS2: Launch Nav2 Bringup (nav2_bringup_custom)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom nav2_bringup.launch.py",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ROS2: Attach to Running Node",
+      "type": "cppdbg",
+      "request": "attach",
+      "program": "${workspaceFolder}/install/${input:packageName}/lib/${input:packageName}/${input:executableName}",
+      "processId": "${command:pickProcess}",
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "gdb の Pretty Printing を有効にする",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "ROS2: C++ Node Debug",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/install/${input:packageName}/lib/${input:packageName}/${input:executableName}",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "envFile": "${workspaceFolder}/.vscode/tmp/node_env.env",
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "gdb の Pretty Printing を有効にする",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "ROS2: colcon build (Debug)"
+    },
+    {
+      "name": "ROS2: Debug Current Test File",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/tmp/current_test_binary",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "envFile": "${workspaceFolder}/.vscode/tmp/test.env",
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "gdb の Pretty Printing を有効にする",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "ROS2: Build Current Test Package (Coverage)",
+      "postDebugTask": "ROS2: Generate Coverage Report (Current Test Package)"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "packageName",
+      "type": "promptString",
+      "description": "デバッグするパッケージ名を入力してください"
+    },
+    {
+      "id": "executableName",
+      "type": "promptString",
+      "description": "実行ファイル（ノード）名を入力してください"
+    }
+  ]
+}

@@ -9,6 +9,10 @@ services:
     ipc: host
     pid: host
     tty: true
+    # gdbによるプロセスへのattach(ROS2: Attach to Running Node)に必要。
+    # デフォルトのDockerケーパビリティではcap_sys_ptraceが外れておりptrace(2)が失敗するため。
+    cap_add:
+      - SYS_PTRACE
     environment:
       - DISPLAY=${DISPLAY}
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
