@@ -21,14 +21,10 @@ Nav2HeartbeatAdapterNode::Nav2HeartbeatAdapterNode(const rclcpp::NodeOptions & o
   // ジッターが大きい可能性があるため、余裕を持たせた値にする。
   liveness_window_ms_(3000),
   heartbeat_period_ms_(100),
-  // Nav2フルスタックの起動完了(local_costmapが実際にpublishを始めるまで)は
-  // このhostのCPU競合下で数秒〜10数秒まで大きくばらつく(実測で15秒を超える
-  // ケースも確認済み)。起動シーケンス中はまだナビゲーションゴールも受け付けて
-  // いないため誤検知の安全上のコストはなく、余裕を持って30秒に設定する
-  // (heartbeat_monitor側のstartup_grace_period_msと同じ理由)。この猶予期間中は
-  // liveness_topicの受信有無に関わらずハートビートをpublishし続け、起動中を
-  // 異常と誤検知しないようにする。
-  startup_grace_period_ms_(30000),
+  // 起動直後のCPU競合で誤検知が起きたため30000ms->40000msに拡大
+  // (詳細・実測根拠はREADME「既知の制約」参照)。この間はliveness_topicの受信有無に
+  // 関わらずハートビートをpublishし続け、起動中を異常と誤検知しないようにする。
+  startup_grace_period_ms_(40000),
   metrics_port_(9104)
 {
   this->declare_parameter<std::string>("liveness_topic", liveness_topic_);
