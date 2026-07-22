@@ -35,6 +35,13 @@
       "presentation": { "reveal": "silent", "panel": "shared" }
     },
     {
+      "label": "ROS2: Send Recovery Command",
+      "type": "shell",
+      "command": "source /opt/ros/$ROS_DISTRO/setup.bash && source ${workspaceFolder}/install/setup.bash && echo 'SAFE_STOP -> MANUAL_RECOVERY' && ros2 topic pub --once /safety/recovery_command std_msgs/msg/Empty {} && sleep 1 && echo 'MANUAL_RECOVERY -> NORMAL' && ros2 topic pub --once /safety/recovery_command std_msgs/msg/Empty {}",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
       "label": "ROS2: Generate Coverage Report (Current Test Package)",
       "type": "shell",
       "command": "PKG=$(basename $(dirname ${fileDirname})) && mkdir -p ${workspaceFolder}/coverage && lcov --capture --directory build/$PKG --output-file ${workspaceFolder}/coverage/coverage_$PKG.info && lcov --remove ${workspaceFolder}/coverage/coverage_$PKG.info '/opt/ros/*' '/usr/*' --output-file ${workspaceFolder}/coverage/coverage_$PKG.info && genhtml ${workspaceFolder}/coverage/coverage_$PKG.info --output-directory ${workspaceFolder}/coverage/html_$PKG && cp ${workspaceFolder}/coverage/coverage_$PKG.info ${workspaceFolder}/coverage/lcov.info && lcov --list ${workspaceFolder}/coverage/coverage_$PKG.info",
