@@ -12,7 +12,9 @@ WatchdogNode::WatchdogNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("watchdog", options),
   timeout_ms_(500),
   check_period_ms_(50),
-  startup_grace_period_ms_(8000),
+  // 起動直後のCPU競合でセンサー途絶の誤検知が起きたため8000ms->40000msに拡大
+  // (詳細・実測根拠はREADME「既知の制約」参照)
+  startup_grace_period_ms_(40000),
   metrics_port_(9103)
 {
   // "トピック名@メッセージ型" 形式。GenericSubscriptionの生成に型名が必須なため。
@@ -25,8 +27,7 @@ WatchdogNode::WatchdogNode(const rclcpp::NodeOptions & options)
   });
   this->declare_parameter<int64_t>("timeout_ms", 500);
   this->declare_parameter<int64_t>("check_period_ms", 50);
-  // Gazebo/センサープラグインの起動に数秒かかるため、heartbeat_monitorより長めに取る
-  this->declare_parameter<int64_t>("startup_grace_period_ms", 8000);
+  this->declare_parameter<int64_t>("startup_grace_period_ms", 40000);
   this->declare_parameter<int64_t>("metrics_port", 9103);
 }
 

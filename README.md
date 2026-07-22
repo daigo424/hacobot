@@ -189,7 +189,21 @@ make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
   レンダリング(Mesa `swrast`)にフォールバックしてCPU使用率が跳ね上がる(実測700〜800%)。
   `edge/docker/docker-compose.yml`で`/dev/dxg`・`/usr/lib/wsl`をコンテナへ渡すことで解消
   (8〜10倍のCPU削減を確認)。あわせてLiDARセンサーも`type="ray"`(CPUレイキャスト)から
-  `type="gpu_ray"`へパッチ済み(`Dockerfile`参照)。それでもなお`/scan`が数十秒に一度、
-  1〜2秒程度途絶しSAFE_STOPを誘発することがある。gzserver自体の内部ブロッキングは
-  strace調査で否定済みで、DDS通信層かサブスクライバ側(`watchdog`)に原因がある可能性が
-  高いが未特定(2026年7月時点、調査継続中)
+  `type="gpu_ray"`へパッチ済み(`Dockerfile`参照)。
+- **WSL2ホスト起因と特定した周期的フリーズ**: GPU修正後もなお、`/scan`・`/camera/image_raw`が
+  約30〜40秒間隔で3〜4秒程度途絶し、`watchdog`のCRITICAL誤検知→SAFE_STOPを誘発することがある。
+  調査の結果、これはROS2/DDS/Gazebo側のバグではなく**ホスト(WSL2 VM)レベルの周期的フリーズ**
+  であると特定した。根拠: 途絶が起きている間、gzserverのCPU計測とは無関係な監視プロセス
+  (`pidstat`)自体のサンプリングも同じ数秒間まるごと欠落する(`pidstat`は1秒間隔でサンプリング
+  しているが、`04:33:04 -> 04:33:09`のように4〜5秒分のサンプルが丸ごと消える)。監視対象の
+  gzserverだけでなく無関係なpidstatプロセスまで同時に止まることから、コンテナ/アプリ層ではなく
+  WSL2 VM全体が数秒間スケジューリングを止めていると考えられる(cgroup CPU throttling
+  (`nr_throttled=0`)、スワップ(ほぼ未使用)は原因から除外済み。Windows側の具体的な発生源
+  (Defenderのリアルタイムスキャン、vhdxの動的拡張、Hyper-Vのメモリバルーニング等)は
+  コンテナ内からは特定不可)。
+  **対応**: `watchdog`/`heartbeat_monitor`/`nav2_heartbeat_adapter`の`startup_grace_period_ms`を
+  実測(起動後30秒以上経過してから初回のフリーズが発生するケースを確認)に合わせて40000msへ
+  拡大し、起動直後の誤検知は解消した。ただしこの周期的フリーズ自体は起動後も継続するため、
+  稼働中に`watchdog`のCRITICAL(SAFE_STOP)が数十秒おきに再発しうるという制約は残っている。
+  `timeout_ms`(センサー途絶の検知閾値、既定500ms)自体は安全設計上の核となる値のため緩めていない。
+  根本的な解消にはWSL2ではないネイティブLinux環境への移行が必要と考えられる(2026年7月時点)
