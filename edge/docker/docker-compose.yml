@@ -56,8 +56,9 @@ services:
     container_name: hacobot_grafana
     network_mode: host
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_SERVER_HTTP_PORT=3001
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3001}
       # localhost:9090のPrometheusを自動でデータソース登録する(手動セットアップ不要にする)
       - GF_INSTALL_PLUGINS=
     volumes:
