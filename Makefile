@@ -47,10 +47,17 @@ PKG_NAME       := $(if $(PKG),$(notdir $(PKG)),)
 COLCON_SELECT  := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
 
 up:
-	cd edge/docker && docker compose up -d
+	@test -f .env || cp .env.example .env
+	docker compose -f edge/docker/docker-compose.yml --env-file .env up -d
+	@. ./.env 2>/dev/null; \
+	echo -----------------------------; \
+	echo "Grafana: http://localhost:$${GRAFANA_PORT:-3001}"; \
+	echo "  User:     $${GRAFANA_ADMIN_USER:-admin}"; \
+	echo "  Password: $${GRAFANA_ADMIN_PASSWORD:-admin}"; \
+	echo -----------------------------
 
 down:
-	cd edge/docker && docker compose down
+	docker compose -f edge/docker/docker-compose.yml --env-file .env down
 
 build:
 	docker exec $(ROS2_CONTAINER) bash -c "\
