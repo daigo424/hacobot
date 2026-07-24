@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""複数体のTurtleBot3を、ロボットごとに完全独立したNav2+フェイルセーフ層で起動する。
+
+各ロボットは専用の/tb3_0N/tf・独立したNav2/SLAMを持つ(nav2_bringupのnamespace機構を使用)。
+そのためRVizで複数ロボットを1つのFixed Frameに同時表示することはできない
+(ロボットごとに別のmapフレームを持つため、共通の親フレームが無い)。
+"""
+import colorsys
+import hashlib
+import os
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    GroupAction,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    RegisterEventHandler,
+)
+from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node, PushRosNamespace, SetRemap
+
+
+def launch_setup(context, *args, **kwargs):
+    robot_id_str = context.perform_substitution(LaunchConfiguration('robot_id'))
+    ns = f"tb3_{robot_id_str}"
+
+    x_pose = LaunchConfiguration('x_pose')
+    y_pose = LaunchConfiguration('y_pose')
+    z_pose = LaunchConfiguration('z_pose')
+
+    model_folder = 'turtlebot3_' + os.environ.get('TURTLEBOT3_MODEL', 'waffle')
+
+    # robot_state_publisher用にturtlebot3_gazeboのURDFを使う
+    # (turtlebot3_descriptionのURDFにはGazeboのセンサー/駆動プラグインが無い)
+    urdf_path = os.path.join(
+        get_package_share_directory('turtlebot3_gazebo'), 'urdf', f'{model_folder}.urdf'
+    )
+    with open(urdf_path, 'r') as f:
+        urdf_content = f.read()
+
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'robot_description': urdf_content,
+        }]
+    )
+
+    # 実際にスポーンする実体はturtlebot3_gazebo本家のmodel.sdfを使う
+    sdf_src_path = os.path.join(
+        get_package_share_directory('turtlebot3_gazebo'), 'models', model_folder, 'model.sdf'
+    )
+    tree = ET.parse(sdf_src_path)
+    root = tree.getroot()
+
+    # 車体色をrobot_idから生成(色相をずらし、別IDなら必ず色が離れる)。
+    # URDFのmaterial colorはGazebo変換で反映されないため、SDFのambient/diffuseを直接書き換える。
+    hue_seed = int(hashlib.sha1(robot_id_str.encode()).hexdigest(), 16) % (2 ** 32)
+    hue = (hue_seed * 0.6180339887498949) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.65, 0.95)
+    for visual in root.iter('visual'):
+        if visual.get('name') == 'base_visual':
+            material = visual.find('material')
+            if material is not None:
+                for tag_name in ('ambient', 'diffuse'):
+                    el = material.find(tag_name)
+                    if el is not None:
+                        el.text = f'{r:.3f} {g:.3f} {b:.3f} 1.0'
+            # visual名が共通のままだとGazeboがマテリアルを使い回し、2体目以降の色が変わらない
+            visual.set('name', f'base_visual_{ns}')
+
+    # tf2_ros::TransformBroadcasterはnamespaceに関わらず"/tf"を絶対パスで固定使用するため、
+    # SDF側で明示的に相対化する
+    for plugin in root.iter('plugin'):
+        if plugin.get('name') == 'turtlebot3_diff_drive':
+            ros_tag = plugin.find('ros')
+            if ros_tag is not None:
+                for src, dst in (('/tf', 'tf'), ('/tf_static', 'tf_static')):
+                    remap = ET.SubElement(ros_tag, 'remapping')
+                    remap.text = f'{src}:={dst}'
+
+    sdf_content = '<?xml version="1.0" ?>\n' + ET.tostring(root, encoding='unicode')
+    sdf_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.sdf', delete=False)
+    sdf_tmp.write(sdf_content)
+    sdf_tmp.close()
+
+    spawn_turtlebot3 = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', ns,
+            '-file', sdf_tmp.name,
+            '-x', x_pose,
+            '-y', y_pose,
+            '-z', z_pose,
+            '-robot_namespace', ns,
+            '-timeout', '180'
+        ],
+        output='screen'
+    )
+
+    # --- Nav2(SLAM Toolbox込み) ---
+    # bringup_launch.pyは自分自身でPushRosNamespaceするため、下のrobot_group(自前の
+    # PushRosNamespace)には含めない(二重にnamespaceが積まれる)。
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
+    nav2_params_file = os.path.join(
+        get_package_share_directory('nav2_bringup_custom'), 'params', 'nav2_params.yaml'
+    )
+    nav2_cmd = GroupAction([
+        # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2"に付け替える(safety_state_machineが中継する)
+        SetRemap(src='cmd_vel', dst='cmd_vel_nav2'),
+        # nav2_params.yaml内の絶対パス/scan(costmap各層・slam_toolbox等、計6箇所)を相対化
+        SetRemap(src='/scan', dst='scan'),
+        # bringup_launch.pyはnav2_containerにだけ/tf remapを渡していて、内部でincludeする
+        # slam_launch.pyには渡していない(upstream側の抜け漏れ)。ここで指定すれば両方効く。
+        SetRemap(src='/tf', dst='tf'),
+        SetRemap(src='/tf_static', dst='tf_static'),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(nav2_bringup_dir, 'launch', 'bringup_launch.py')
+            ),
+            launch_arguments={
+                'namespace': ns,
+                'use_namespace': 'true',
+                # 内部でPythonのeval()条件分岐に使われるため'True'(先頭大文字)が必須
+                'slam': 'True',
+                # slam:=Trueでは未使用だが、デフォルト値の無い必須引数なので空文字を渡す
+                'map': '',
+                'use_sim_time': 'true',
+                'params_file': nav2_params_file,
+                'autostart': 'true',
+            }.items(),
+        ),
+    ])
+
+    # --- フェイルセーフ層(safety_bringup) ---
+    safety_bringup_dir = get_package_share_directory('safety_bringup')
+    safety_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(safety_bringup_dir, 'launch', 'safety_bringup.launch.py')
+        )
+    )
+
+    # フェイルセーフ層5ノードは/safety/*・/cmd_vel等を絶対パスで決め打ちしているため、
+    # PushRosNamespaceの前にSetRemapで相対化する(/scan等はwatchdog/adapterが見るため)。
+    robot_group = GroupAction([
+        PushRosNamespace(ns),
+        SetRemap(src='/tf', dst='tf'),
+        SetRemap(src='/tf_static', dst='tf_static'),
+        SetRemap(src='/scan', dst='scan'),
+        SetRemap(src='/camera/image_raw', dst='camera/image_raw'),
+        SetRemap(src='/imu', dst='imu'),
+        SetRemap(src='/local_costmap/costmap', dst='local_costmap/costmap'),
+        SetRemap(src='/safety/anomaly_event', dst='safety/anomaly_event'),
+        SetRemap(src='/safety/recovery_command', dst='safety/recovery_command'),
+        SetRemap(src='/safety/heartbeat/nav2', dst='safety/heartbeat/nav2'),
+        SetRemap(src='/safety/heartbeat/comm_bridge', dst='safety/heartbeat/comm_bridge'),
+        SetRemap(src='/safety/state', dst='safety/state'),
+        SetRemap(src='/cmd_vel_nav2', dst='cmd_vel_nav2'),
+        SetRemap(src='/cmd_vel', dst='cmd_vel'),
+        robot_state_publisher,
+        safety_cmd,
+    ])
+
+    # 前回異常終了で同名エンティティが残っていると"already exists"で失敗するため、
+    # スポーン前にベストエフォートで削除してからspawnする。
+    # Gazebo Classicはセンサープラグイン付きモデルの削除でgzserver自体がsegfaultする
+    # 既知の問題があるため、削除前後に物理エンジンを一時停止/再開する。
+    delete_existing_cmd = ExecuteProcess(
+        cmd=[
+            'bash', '-c',
+            "ros2 service call /pause_physics std_srvs/srv/Empty '{}' && "
+            f"ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity \"{{name: '{ns}'}}\"; "
+            "ros2 service call /unpause_physics std_srvs/srv/Empty '{}'",
+        ],
+        output='screen',
+    )
+    spawn_after_cleanup = RegisterEventHandler(
+        OnProcessExit(
+            target_action=delete_existing_cmd,
+            on_exit=[spawn_turtlebot3],
+        )
+    )
+
+    # OnProcessExitは全体シャットダウン中に新規アクションをスキップすることがあるため、
+    # シャットダウン専用のOnShutdown+同期subprocess.runで呼ぶ。
+    def _delete_entity_on_shutdown(event, context):
+        subprocess.run(
+            ['ros2', 'service', 'call', '/pause_physics', 'std_srvs/srv/Empty', '{}'],
+            timeout=10,
+        )
+        subprocess.run(
+            [
+                'ros2', 'service', 'call', '/delete_entity',
+                'gazebo_msgs/srv/DeleteEntity', f"{{name: '{ns}'}}",
+            ],
+            timeout=10,
+        )
+        subprocess.run(
+            ['ros2', 'service', 'call', '/unpause_physics', 'std_srvs/srv/Empty', '{}'],
+            timeout=10,
+        )
+
+    clean_up_action = RegisterEventHandler(
+        OnShutdown(on_shutdown=_delete_entity_on_shutdown)
+    )
+
+    return [
+        robot_group,
+        nav2_cmd,
+        delete_existing_cmd,
+        spawn_after_cleanup,
+        clean_up_action,
+    ]
+
+
+def generate_launch_description():
+    ld = LaunchDescription()
+    ld.add_action(DeclareLaunchArgument('robot_id', default_value='01'))
+    # turtlebot3_worldでは(0.0, 0.0)は壁際で物理エンジンに弾き出されるため、
+    # upstreamと同じ壁の無い座標をデフォルトにする
+    ld.add_action(DeclareLaunchArgument('x_pose', default_value='-2.0'))
+    ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
+    ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
+
+    ld.add_action(OpaqueFunction(function=launch_setup))
+    return ld
