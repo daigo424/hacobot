@@ -37,7 +37,9 @@ SafetyStateMachineNode::SafetyStateMachineNode(const rclcpp::NodeOptions & optio
   degraded_speed_scale_(0.5),
   cmd_vel_period_ms_(50),
   metrics_port_(9102),
-  safety_state_(SafetyState::NORMAL)
+  safety_state_(SafetyState::NORMAL),
+  sensors_healthy_(false),
+  estop_latched_(false)
 {
   this->declare_parameter<int64_t>("degraded_timeout_ms", 2000);
   this->declare_parameter<double>("degraded_speed_scale", 0.5);
@@ -90,6 +92,12 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_activate(
     "/cmd_vel_nav2", rclcpp::QoS(10),
     std::bind(&SafetyStateMachineNode::on_nav2_cmd_vel, this, std::placeholders::_1));
 
+  // watchdogがtransient_localでlatchしているため、watchdogの方が先にactivateしていれば
+  // 購読直後に直近の値を受け取れる
+  sensors_ok_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+    "/safety/sensors_ok", rclcpp::QoS(1).transient_local(),
+    std::bind(&SafetyStateMachineNode::on_sensors_ok, this, std::placeholders::_1));
+
   cmd_vel_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(cmd_vel_period_ms_),
     std::bind(&SafetyStateMachineNode::on_cmd_vel_timer, this));
@@ -97,6 +105,9 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_activate(
   // activate直後は常にNORMALから開始する(意図しない自律再開を防ぐため、
   // 前回のSAFE_STOP状態を暗黙に引き継ぐことはしない)
   safety_state_ = SafetyState::NORMAL;
+  // watchdogからの通知を受け取るまでは安全側(未健全)扱いにする
+  sensors_healthy_ = false;
+  estop_latched_ = false;
   std_msgs::msg::String state_msg;
   state_msg.data = to_string(safety_state_);
   state_pub_->publish(state_msg);
@@ -116,6 +127,7 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_deactivate(
   anomaly_sub_.reset();
   recovery_sub_.reset();
   nav2_cmd_vel_sub_.reset();
+  sensors_ok_sub_.reset();
 
   cmd_vel_pub_->on_deactivate();
   state_pub_->on_deactivate();
@@ -144,6 +156,7 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_shutdown(
   anomaly_sub_.reset();
   recovery_sub_.reset();
   nav2_cmd_vel_sub_.reset();
+  sensors_ok_sub_.reset();
   cmd_vel_pub_.reset();
   state_pub_.reset();
   metrics_.stop();
@@ -160,6 +173,10 @@ void SafetyStateMachineNode::on_anomaly_event(
     RCLCPP_WARN(
       this->get_logger(), "CRITICAL anomaly from '%s': %s -> immediate SAFE_STOP",
       msg->source.c_str(), msg->reason.c_str());
+    if (msg->source == "estop_bridge") {
+      // リモートE-Stopは、センサーが健全に戻ってもcmd_velを中継してはいけない
+      estop_latched_ = true;
+    }
     transition_safety_state(SafetyState::SAFE_STOP);
     return;
   }
@@ -192,6 +209,7 @@ void SafetyStateMachineNode::on_recovery_command(
     transition_safety_state(SafetyState::MANUAL_RECOVERY);
   } else if (safety_state_ == SafetyState::MANUAL_RECOVERY) {
     RCLCPP_INFO(this->get_logger(), "Recovery command received: MANUAL_RECOVERY -> NORMAL");
+    estop_latched_ = false;
     transition_safety_state(SafetyState::NORMAL);
   } else {
     RCLCPP_WARN(
@@ -203,6 +221,11 @@ void SafetyStateMachineNode::on_recovery_command(
 void SafetyStateMachineNode::on_nav2_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
   latest_nav2_cmd_vel_ = *msg;
+}
+
+void SafetyStateMachineNode::on_sensors_ok(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  sensors_healthy_ = msg->data;
 }
 
 void SafetyStateMachineNode::on_cmd_vel_timer()
@@ -223,7 +246,12 @@ void SafetyStateMachineNode::on_cmd_vel_timer()
       break;
     case SafetyState::SAFE_STOP:
     case SafetyState::MANUAL_RECOVERY:
-      // outはデフォルト構築のゼロ値のまま(全速度成分0.0)
+      // センサーが健全(sensors_healthy_)で、かつリモートE-Stop由来のロック
+      // (estop_latched_)でなければ、RVizのNav2 Goal含むNav2の指令をそのまま中継する。
+      // それ以外はoutをデフォルト構築のゼロ値のままにする(全速度成分0.0)。
+      if (sensors_healthy_ && !estop_latched_) {
+        out = latest_nav2_cmd_vel_;
+      }
       break;
   }
 

@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "safety_msgs/msg/anomaly_event.hpp"
 #include "safety_state_machine/safety_state_machine_node.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 
@@ -36,6 +37,8 @@ protected:
       "/safety/recovery_command", rclcpp::QoS(10));
     nav2_cmd_vel_pub_ = helper_node_->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel_nav2", rclcpp::QoS(10));
+    sensors_ok_pub_ = helper_node_->create_publisher<std_msgs::msg::Bool>(
+      "/safety/sensors_ok", rclcpp::QoS(1).transient_local());
 
     cmd_vel_sub_ = helper_node_->create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::QoS(10),
@@ -79,12 +82,20 @@ protected:
     anomaly_pub_->publish(event);
   }
 
+  void publish_sensors_ok(bool ok)
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = ok;
+    sensors_ok_pub_->publish(msg);
+  }
+
   rclcpp::executors::SingleThreadedExecutor executor_;
   std::shared_ptr<safety_state_machine::SafetyStateMachineNode> node_;
   rclcpp::Node::SharedPtr helper_node_;
   rclcpp::Publisher<safety_msgs::msg::AnomalyEvent>::SharedPtr anomaly_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr recovery_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr nav2_cmd_vel_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr sensors_ok_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   geometry_msgs::msg::Twist last_cmd_vel_;
   int cmd_vel_count_{0};
@@ -179,6 +190,75 @@ TEST_F(SafetyStateMachineTest, CmdVelIsZeroedDuringSafeStop)
   // SAFE_STOP中はNav2からの指令に関わらずゼロにoverrideされる
   EXPECT_DOUBLE_EQ(last_cmd_vel_.linear.x, 0.0);
   EXPECT_DOUBLE_EQ(last_cmd_vel_.angular.z, 0.0);
+}
+
+TEST_F(SafetyStateMachineTest, SensorsHealthyDefaultsFalseUntilWatchdogReports)
+{
+  // watchdogからの通知を一度も受け取っていない起動直後は、安全側(未健全)扱いのはず
+  EXPECT_FALSE(node_->sensors_healthy());
+}
+
+TEST_F(SafetyStateMachineTest, CmdVelRelayedDuringSafeStopWhenSensorsHealthy)
+{
+  publish_sensors_ok(true);
+  spin_for(60ms);
+  ASSERT_TRUE(node_->sensors_healthy());
+
+  // heartbeat_monitor由来のWARNING連続でSAFE_STOPへ(センサー自体は健全という想定)
+  publish_anomaly("nav2", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  publish_anomaly("comm_bridge", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
+
+  geometry_msgs::msg::Twist nav2_cmd;
+  nav2_cmd.linear.x = 0.8;
+  nav2_cmd_vel_pub_->publish(nav2_cmd);
+  spin_for(60ms);
+
+  // センサーが健全なSAFE_STOPでは、RVizのNav2 Goal等によるcmd_vel_nav2を中継してよい
+  EXPECT_DOUBLE_EQ(last_cmd_vel_.linear.x, 0.8);
+}
+
+TEST_F(SafetyStateMachineTest, EstopLatchBlocksCmdVelEvenWhenSensorsHealthy)
+{
+  publish_sensors_ok(true);
+  spin_for(60ms);
+  ASSERT_TRUE(node_->sensors_healthy());
+
+  publish_anomaly("estop_bridge", safety_msgs::msg::AnomalyEvent::CRITICAL);
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
+  EXPECT_TRUE(node_->estop_latched());
+
+  geometry_msgs::msg::Twist nav2_cmd;
+  nav2_cmd.linear.x = 0.8;
+  nav2_cmd_vel_pub_->publish(nav2_cmd);
+  spin_for(60ms);
+
+  // センサーが健全でも、リモートE-Stop由来のSAFE_STOPはcmd_velを通さない
+  EXPECT_DOUBLE_EQ(last_cmd_vel_.linear.x, 0.0);
+}
+
+TEST_F(SafetyStateMachineTest, EstopLatchClearsOnlyAfterFullRecoveryToNormal)
+{
+  publish_sensors_ok(true);
+  spin_for(60ms);
+
+  publish_anomaly("estop_bridge", safety_msgs::msg::AnomalyEvent::CRITICAL);
+  spin_for(80ms);
+  ASSERT_TRUE(node_->estop_latched());
+
+  recovery_pub_->publish(std_msgs::msg::Empty());
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::MANUAL_RECOVERY);
+  // MANUAL_RECOVERYの間はまだestopロックを保持したまま
+  EXPECT_TRUE(node_->estop_latched());
+
+  recovery_pub_->publish(std_msgs::msg::Empty());
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::NORMAL);
+  EXPECT_FALSE(node_->estop_latched());
 }
 
 int main(int argc, char ** argv)

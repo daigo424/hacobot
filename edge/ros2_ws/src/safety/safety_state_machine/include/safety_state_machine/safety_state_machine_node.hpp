@@ -11,6 +11,7 @@
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
 #include "safety_metrics/prometheus_exporter.hpp"
 #include "safety_msgs/msg/anomaly_event.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 
@@ -47,11 +48,14 @@ public:
 
   // テスト・デバッグ用に現在のSafetyStateを直接参照できるようにする
   SafetyState current_state() const {return safety_state_;}
+  bool sensors_healthy() const {return sensors_healthy_;}
+  bool estop_latched() const {return estop_latched_;}
 
 private:
   void on_anomaly_event(const safety_msgs::msg::AnomalyEvent::SharedPtr msg);
   void on_recovery_command(const std_msgs::msg::Empty::SharedPtr msg);
   void on_nav2_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void on_sensors_ok(const std_msgs::msg::Bool::SharedPtr msg);
   void on_cmd_vel_timer();
   void on_degraded_timeout();
 
@@ -65,10 +69,19 @@ private:
 
   SafetyState safety_state_;
   geometry_msgs::msg::Twist latest_nav2_cmd_vel_;
+  // watchdogの/safety/sensors_okをそのまま反映(センサー由来のSAFE_STOP中でも、
+  // センサー自体が生きていればcmd_vel_nav2を中継してよいかの判定に使う)。
+  // watchdogからの通知が届くまでは安全側に倒してfalse(未健全)扱いとする。
+  bool sensors_healthy_;
+  // estop_bridge由来のCRITICAL(リモートE-Stop)でSAFE_STOPに入った場合は、
+  // センサーが健全でもcmd_velを中継しない(E-Stopの意味を上書きしないため)。
+  // NORMALへ完全復旧するまで解除しない。
+  bool estop_latched_;
 
   rclcpp::Subscription<safety_msgs::msg::AnomalyEvent>::SharedPtr anomaly_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr recovery_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr nav2_cmd_vel_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sensors_ok_sub_;
 
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>> cmd_vel_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>> state_pub_;
