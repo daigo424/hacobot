@@ -21,11 +21,11 @@ from launch.actions import (
     OpaqueFunction,
     RegisterEventHandler,
 )
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
-
 
 def launch_setup(context, *args, **kwargs):
     robot_id_str = context.perform_substitution(LaunchConfiguration('robot_id'))
@@ -56,6 +56,142 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # 実際にスポーンする実体はturtlebot3_gazebo本家のmodel.sdfを使う
+    sdf_tmp = build_sdf_with_color(model_folder, robot_id_str)
+
+    spawn_turtlebot3 = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', ns,
+            '-file', sdf_tmp.name,
+            '-x', x_pose,
+            '-y', y_pose,
+            '-z', z_pose,
+            '-robot_namespace', ns,
+            '-timeout', '180'
+        ],
+        output='screen'
+    )
+
+    # --- Nav2(SLAM Toolbox込み) ---
+    # bringup_launch.pyは自分自身でPushRosNamespaceするため、下のrobot_group(自前の
+    # PushRosNamespace)には含めない(二重にnamespaceが積まれる)。
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
+    nav2_params_file = os.path.join(
+        get_package_share_directory('nav2_bringup_custom'), 'params', 'nav2_params.yaml'
+    )
+    nav2_cmd = GroupAction([
+        # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2"に付け替える(safety_state_machineが中継する)
+        SetRemap(src='cmd_vel', dst='cmd_vel_nav2'),
+        # nav2_params.yaml内の絶対パス/scan(costmap各層・slam_toolbox等、計6箇所)を相対化
+        SetRemap(src='/scan', dst='scan'),
+        # bringup_launch.pyはnav2_containerにだけ/tf remapを渡していて、内部でincludeする
+        # slam_launch.pyには渡していない(upstream側の抜け漏れ)。ここで指定すれば両方効く。
+        SetRemap(src='/tf', dst='tf'),
+        SetRemap(src='/tf_static', dst='tf_static'),
+        # slam_toolboxは/tf同様、/map・/map_metadataも絶対パスで固定publishするため、
+        # 複数ロボット共存時に全ロボットのSLAMが同じ/mapに衝突する。ここで相対化する。
+        SetRemap(src='/map', dst='map'),
+        SetRemap(src='/map_metadata', dst='map_metadata'),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(nav2_bringup_dir, 'launch', 'bringup_launch.py')
+            ),
+            launch_arguments={
+                'namespace': ns,
+                'use_namespace': 'true',
+                # 内部でPythonのeval()条件分岐に使われるため'True'(先頭大文字)が必須
+                'slam': 'True',
+                # slam:=Trueでは未使用だが、デフォルト値の無い必須引数なので空文字を渡す
+                'map': '',
+                'use_sim_time': 'true',
+                'params_file': nav2_params_file,
+                'autostart': 'true',
+            }.items(),
+        ),
+    ])
+
+    # --- フェイルセーフ層(safety_bringup) ---
+    safety_bringup_dir = get_package_share_directory('safety_bringup')
+    safety_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(safety_bringup_dir, 'launch', 'safety_bringup.launch.py')
+        )
+    )
+
+    # 地図が空(0x0)だとNav2は経路計画できず、経路が無いとロボットは動けず、動けないと
+    # slam_toolboxの地図も育たない、というデッドロックがあるため、スポーン直後の一定時間だけ
+    # 自動でロボットを動かして初期地図を育てる。cmd_vel_nav2経由なのでsafety_state_machineの
+    # 制御(センサー異常時は止まる)は通常通り効く。
+    initial_map_seeder_cmd = Node(
+        package='spawn_robot',
+        executable='initial_map_seeder.py',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+        condition=IfCondition(LaunchConfiguration('auto_seed_map')),
+    )
+
+    # フェイルセーフ層5ノードは/safety/*・/cmd_vel等を絶対パスで決め打ちしているため、
+    # PushRosNamespaceの前にSetRemapで相対化する(/scan等はwatchdog/adapterが見るため)。
+    robot_group = GroupAction([
+        PushRosNamespace(ns),
+        SetRemap(src='/tf', dst='tf'),
+        SetRemap(src='/tf_static', dst='tf_static'),
+        SetRemap(src='/scan', dst='scan'),
+        SetRemap(src='/camera/image_raw', dst='camera/image_raw'),
+        SetRemap(src='/imu', dst='imu'),
+        SetRemap(src='/local_costmap/costmap', dst='local_costmap/costmap'),
+        SetRemap(src='/safety/anomaly_event', dst='safety/anomaly_event'),
+        SetRemap(src='/safety/recovery_command', dst='safety/recovery_command'),
+        SetRemap(src='/safety/heartbeat/nav2', dst='safety/heartbeat/nav2'),
+        SetRemap(src='/safety/heartbeat/comm_bridge', dst='safety/heartbeat/comm_bridge'),
+        SetRemap(src='/safety/state', dst='safety/state'),
+        SetRemap(src='/safety/sensors_ok', dst='safety/sensors_ok'),
+        SetRemap(src='/cmd_vel_nav2', dst='cmd_vel_nav2'),
+        SetRemap(src='/cmd_vel', dst='cmd_vel'),
+        robot_state_publisher,
+        safety_cmd,
+        initial_map_seeder_cmd,
+    ])
+
+    # 前回異常終了で同名エンティティが残っていると"already exists"で失敗するため、
+    # スポーン前にベストエフォートで削除してからspawnする。
+    # delete_entity_safely.pyが削除前後に物理エンジンを一時停止/再開する
+    # (Gazebo Classicのdelete時segfault対策)。
+    delete_existing_cmd = ExecuteProcess(
+        cmd=['ros2', 'run', 'spawn_robot', 'delete_entity_safely.py', ns],
+        output='screen',
+    )
+    spawn_after_cleanup = RegisterEventHandler(
+        OnProcessExit(
+            target_action=delete_existing_cmd,
+            on_exit=[spawn_turtlebot3],
+        )
+    )
+
+    # OnProcessExitは全体シャットダウン中に新規アクションをスキップすることがあるため、
+    # シャットダウン専用のOnShutdown+同期subprocess.runで呼ぶ。
+    def _delete_entity_on_shutdown(event, context):
+        subprocess.run(
+            ['ros2', 'run', 'spawn_robot', 'delete_entity_safely.py', ns],
+            timeout=10,
+        )
+
+    clean_up_action = RegisterEventHandler(
+        OnShutdown(on_shutdown=_delete_entity_on_shutdown)
+    )
+
+    return [
+        robot_group,
+        nav2_cmd,
+        delete_existing_cmd,
+        spawn_after_cleanup,
+        clean_up_action,
+    ]
+
+
+def build_sdf_with_color(model_folder, robot_id_str):
+    ns = f"tb3_{robot_id_str}"
     sdf_src_path = os.path.join(
         get_package_share_directory('turtlebot3_gazebo'), 'models', model_folder, 'model.sdf'
     )
@@ -93,135 +229,7 @@ def launch_setup(context, *args, **kwargs):
     sdf_tmp.write(sdf_content)
     sdf_tmp.close()
 
-    spawn_turtlebot3 = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
-        arguments=[
-            '-entity', ns,
-            '-file', sdf_tmp.name,
-            '-x', x_pose,
-            '-y', y_pose,
-            '-z', z_pose,
-            '-robot_namespace', ns,
-            '-timeout', '180'
-        ],
-        output='screen'
-    )
-
-    # --- Nav2(SLAM Toolbox込み) ---
-    # bringup_launch.pyは自分自身でPushRosNamespaceするため、下のrobot_group(自前の
-    # PushRosNamespace)には含めない(二重にnamespaceが積まれる)。
-    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
-    nav2_params_file = os.path.join(
-        get_package_share_directory('nav2_bringup_custom'), 'params', 'nav2_params.yaml'
-    )
-    nav2_cmd = GroupAction([
-        # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2"に付け替える(safety_state_machineが中継する)
-        SetRemap(src='cmd_vel', dst='cmd_vel_nav2'),
-        # nav2_params.yaml内の絶対パス/scan(costmap各層・slam_toolbox等、計6箇所)を相対化
-        SetRemap(src='/scan', dst='scan'),
-        # bringup_launch.pyはnav2_containerにだけ/tf remapを渡していて、内部でincludeする
-        # slam_launch.pyには渡していない(upstream側の抜け漏れ)。ここで指定すれば両方効く。
-        SetRemap(src='/tf', dst='tf'),
-        SetRemap(src='/tf_static', dst='tf_static'),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(nav2_bringup_dir, 'launch', 'bringup_launch.py')
-            ),
-            launch_arguments={
-                'namespace': ns,
-                'use_namespace': 'true',
-                # 内部でPythonのeval()条件分岐に使われるため'True'(先頭大文字)が必須
-                'slam': 'True',
-                # slam:=Trueでは未使用だが、デフォルト値の無い必須引数なので空文字を渡す
-                'map': '',
-                'use_sim_time': 'true',
-                'params_file': nav2_params_file,
-                'autostart': 'true',
-            }.items(),
-        ),
-    ])
-
-    # --- フェイルセーフ層(safety_bringup) ---
-    safety_bringup_dir = get_package_share_directory('safety_bringup')
-    safety_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(safety_bringup_dir, 'launch', 'safety_bringup.launch.py')
-        )
-    )
-
-    # フェイルセーフ層5ノードは/safety/*・/cmd_vel等を絶対パスで決め打ちしているため、
-    # PushRosNamespaceの前にSetRemapで相対化する(/scan等はwatchdog/adapterが見るため)。
-    robot_group = GroupAction([
-        PushRosNamespace(ns),
-        SetRemap(src='/tf', dst='tf'),
-        SetRemap(src='/tf_static', dst='tf_static'),
-        SetRemap(src='/scan', dst='scan'),
-        SetRemap(src='/camera/image_raw', dst='camera/image_raw'),
-        SetRemap(src='/imu', dst='imu'),
-        SetRemap(src='/local_costmap/costmap', dst='local_costmap/costmap'),
-        SetRemap(src='/safety/anomaly_event', dst='safety/anomaly_event'),
-        SetRemap(src='/safety/recovery_command', dst='safety/recovery_command'),
-        SetRemap(src='/safety/heartbeat/nav2', dst='safety/heartbeat/nav2'),
-        SetRemap(src='/safety/heartbeat/comm_bridge', dst='safety/heartbeat/comm_bridge'),
-        SetRemap(src='/safety/state', dst='safety/state'),
-        SetRemap(src='/cmd_vel_nav2', dst='cmd_vel_nav2'),
-        SetRemap(src='/cmd_vel', dst='cmd_vel'),
-        robot_state_publisher,
-        safety_cmd,
-    ])
-
-    # 前回異常終了で同名エンティティが残っていると"already exists"で失敗するため、
-    # スポーン前にベストエフォートで削除してからspawnする。
-    # Gazebo Classicはセンサープラグイン付きモデルの削除でgzserver自体がsegfaultする
-    # 既知の問題があるため、削除前後に物理エンジンを一時停止/再開する。
-    delete_existing_cmd = ExecuteProcess(
-        cmd=[
-            'bash', '-c',
-            "ros2 service call /pause_physics std_srvs/srv/Empty '{}' && "
-            f"ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity \"{{name: '{ns}'}}\"; "
-            "ros2 service call /unpause_physics std_srvs/srv/Empty '{}'",
-        ],
-        output='screen',
-    )
-    spawn_after_cleanup = RegisterEventHandler(
-        OnProcessExit(
-            target_action=delete_existing_cmd,
-            on_exit=[spawn_turtlebot3],
-        )
-    )
-
-    # OnProcessExitは全体シャットダウン中に新規アクションをスキップすることがあるため、
-    # シャットダウン専用のOnShutdown+同期subprocess.runで呼ぶ。
-    def _delete_entity_on_shutdown(event, context):
-        subprocess.run(
-            ['ros2', 'service', 'call', '/pause_physics', 'std_srvs/srv/Empty', '{}'],
-            timeout=10,
-        )
-        subprocess.run(
-            [
-                'ros2', 'service', 'call', '/delete_entity',
-                'gazebo_msgs/srv/DeleteEntity', f"{{name: '{ns}'}}",
-            ],
-            timeout=10,
-        )
-        subprocess.run(
-            ['ros2', 'service', 'call', '/unpause_physics', 'std_srvs/srv/Empty', '{}'],
-            timeout=10,
-        )
-
-    clean_up_action = RegisterEventHandler(
-        OnShutdown(on_shutdown=_delete_entity_on_shutdown)
-    )
-
-    return [
-        robot_group,
-        nav2_cmd,
-        delete_existing_cmd,
-        spawn_after_cleanup,
-        clean_up_action,
-    ]
-
+    return sdf_tmp
 
 def generate_launch_description():
     ld = LaunchDescription()
@@ -231,6 +239,7 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument('x_pose', default_value='-2.0'))
     ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
     ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
+    ld.add_action(DeclareLaunchArgument('auto_seed_map', default_value='true'))
 
     ld.add_action(OpaqueFunction(function=launch_setup))
     return ld

@@ -95,7 +95,8 @@ rviz:
 		RVIZ_TMP=/tmp/hacobot_view_$(ROBOT_ID).rviz && \
 		sed 's/tb3_01/$(ROBOT_ID)/g' \$$RVIZ_SRC > \$$RVIZ_TMP && \
 		rviz2 -d \$$RVIZ_TMP \
-			--ros-args -r /tf:=/$(ROBOT_ID)/tf -r /tf_static:=/$(ROBOT_ID)/tf_static"
+			--ros-args -r /tf:=/$(ROBOT_ID)/tf -r /tf_static:=/$(ROBOT_ID)/tf_static \
+			-r __ns:=/$(ROBOT_ID)"
 
 login:
 	$(EXEC) $(ROS2_SERVICE) bash -c \
