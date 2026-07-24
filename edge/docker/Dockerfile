@@ -1,41 +1,30 @@
-FROM osrf/ros:humble-desktop
+FROM osrf/ros:jazzy-desktop
 
-# TurtleBot3シミュレーション + Nav2 + SLAM Toolbox一式。
-# runs/gazebo.sh は起動の度にapt-get installしていたが、ここではイメージビルド時に
-# 一度だけ入れることで起動を速く・再現可能にする。
+# TurtleBot3シミュレーション(Gazebo Harmonic/gz sim) + Nav2 + SLAM Toolbox一式。
+# ros-jazzy-turtlebot3-gazeboはまだバイナリ配布が無いため、ソースをedge/ros2_ws/src/に
+# vendorしてworkspace全体のcolcon buildでビルドする(このDockerfile内では入れない)。
+# 理由: docker-compose.ymlが../ros2_ws:/workspaceを丸ごとbind mountしているため、
+# イメージビルド時に/workspace/src以下へ焼き込んでも実行時のmountで隠れてしまう。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     x11-apps \
-    ros-humble-gazebo-ros-pkgs \
-    ros-humble-turtlebot3-simulations \
-    ros-humble-turtlebot3 \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-slam-toolbox \
-    ros-humble-teleop-twist-keyboard \
+    git \
+    ros-jazzy-ros-gz \
+    ros-jazzy-turtlebot3 \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
+    ros-jazzy-slam-toolbox \
+    ros-jazzy-teleop-twist-keyboard \
     python3-colcon-common-extensions \
+    python3-rosdep \
     librdkafka-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# 補足1: Gazebo公式のモデルサーバーURL変更によるハング・タイムアウトを回避する設定。
-# (runs/gazebo.sh で毎回ランタイムパッチしていたのをビルド時に焼き込む)
-RUN mkdir -p /root/.gazebo/config && \
-    printf 'url: https://fuel.gazebosim.org\nversion: 1.0\n' > /root/.gazebo/config/config.yaml
-
-# 補足2: spawn_entity.py のデフォルト待機時間(30秒)は、モデルの初回ダウンロードで
-# 超過してワールドだけ表示されロボットが出現しない問題を起こす(cold cache時に実測143秒)。
-# 180秒に延長する。(runs/gazebo.sh の起動時パッチと同じ内容をビルド時に焼き込む)
-# (アンカー$は使わない: このファイルはCRLF改行が混在しており$の直前にマッチしないため)
-RUN sed -i "s/'-z', '0.01'/'-z', '0.01', '-timeout', '180'/" \
-    /opt/ros/humble/share/turtlebot3_gazebo/launch/spawn_turtlebot3.launch.py
-
-# 補足3: LiDAR(hls_lfcd_lds)センサーのデフォルトtype="ray"はODE(物理エンジン)側の
-# CPUレイキャストで、GPUパススルー(docker-compose.ymlの/dev/dxgマウント)を有効化しても
-# 恩恵を受けない。type="gpu_ray"に変更するとGPUでのレンダリングベースのレイキャストになり、
-# camera/imuと同様の途絶が発生しなくなることを実機検証済み(同じlibgazebo_ros_ray_sensor.so
-# プラグインがgpu_rayにもそのまま対応している)。
-RUN sed -i 's/<sensor name="hls_lfcd_lds" type="ray">/<sensor name="hls_lfcd_lds" type="gpu_ray">/' \
-    /opt/ros/humble/share/turtlebot3_gazebo/models/turtlebot3_waffle/model.sdf
+# turtlebot3_gazebo(ros_gz_sim版)・explore_lite(m-explore-ros2)はvendorしたソースパッケージ
+# なので、その依存関係をrosdepで解決できるようにしておく(apt-get installでの手動列挙より
+# vendor元のpackage.xmlに追従できて壊れにくい)。実際の解決・インストールは
+# workspace側でrosdep install --from-paths src --ignore-src する運用を想定。
+RUN rosdep update
 
 ENV TURTLEBOT3_MODEL=waffle
 ENV QT_X11_NO_MITSHM=1

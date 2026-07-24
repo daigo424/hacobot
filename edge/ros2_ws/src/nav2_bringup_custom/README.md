@@ -20,7 +20,7 @@ docker compose up -d
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/humble/setup.bash &&
+    source /opt/ros/jazzy/setup.bash &&
     colcon build --packages-select nav2_bringup_custom &&
     source install/setup.bash
 "
@@ -32,7 +32,7 @@ docker exec -it ros2_nav2_container bash -c "
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/humble/setup.bash && source install/setup.bash &&
+    source /opt/ros/jazzy/setup.bash && source install/setup.bash &&
     ros2 launch nav2_bringup_custom gazebo_sim.launch.py
 "
 ```
@@ -43,7 +43,7 @@ docker exec -it ros2_nav2_container bash -c "
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/humble/setup.bash && source install/setup.bash &&
+    source /opt/ros/jazzy/setup.bash && source install/setup.bash &&
     ros2 launch nav2_bringup_custom nav2_bringup.launch.py
 "
 ```
@@ -52,7 +52,7 @@ docker exec -it ros2_nav2_container bash -c "
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/humble/setup.bash && source install/setup.bash &&
+    source /opt/ros/jazzy/setup.bash && source install/setup.bash &&
     ros2 launch nav2_bringup rviz_launch.py
 "
 ```
@@ -63,7 +63,7 @@ RViz上で「Nav2 Goal」を指定すると、SLAM Toolboxが生成中の地図�
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/humble/setup.bash && \
+    source /opt/ros/jazzy/setup.bash && \
     ros2 run teleop_twist_keyboard teleop_twist_keyboard
 "
 ```

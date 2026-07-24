@@ -28,7 +28,7 @@ if [ -z "$KAFKA_POD" ]; then
 fi
 
 if ! docker exec "$CONTAINER_NAME" bash -c \
-    "source /opt/ros/humble/setup.bash && ros2 node list 2>/dev/null | grep -q /estop_bridge"; then
+    "source /opt/ros/jazzy/setup.bash && ros2 node list 2>/dev/null | grep -q /estop_bridge"; then
   fail "estop_bridgeが起動していません。先に demos/02_launch_stack.sh を実行してください。"
   exit 1
 fi
@@ -46,7 +46,7 @@ pass "127.0.0.1:30092 に到達できています"
 
 echo "現在の /safety/state:"
 docker exec "$CONTAINER_NAME" bash -c \
-  "source /opt/ros/humble/setup.bash && timeout 3 ros2 topic echo /safety/state --once --field data" 2>/dev/null \
+  "source /opt/ros/jazzy/setup.bash && timeout 3 ros2 topic echo /safety/state --once --field data" 2>/dev/null \
   | head -1
 
 # この検証環境はgzserverの高CPU負荷でセンサー/ハートビートが本物のノイズで
@@ -77,7 +77,7 @@ for i in $(seq 1 10); do
 done
 
 final_state="$(docker exec "$CONTAINER_NAME" bash -c \
-  "source /opt/ros/humble/setup.bash && timeout 3 ros2 topic echo /safety/state --once --field data" 2>/dev/null \
+  "source /opt/ros/jazzy/setup.bash && timeout 3 ros2 topic echo /safety/state --once --field data" 2>/dev/null \
   | head -1 | tr -d '\r')"
 echo "最終的な /safety/state: ${final_state:-<取得失敗>}"
 
@@ -91,5 +91,5 @@ fi
 echo
 log "復旧する場合(2回送るとNORMALへ戻ります):"
 echo "  docker exec $CONTAINER_NAME bash -c \\"
-echo "    \"source /opt/ros/humble/setup.bash && \\"
+echo "    \"source /opt/ros/jazzy/setup.bash && \\"
 echo "     ros2 topic pub -1 /safety/recovery_command std_msgs/msg/Empty '{}'\""

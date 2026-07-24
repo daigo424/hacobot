@@ -52,7 +52,7 @@ def run(cmd: list[str], timeout: int = 15) -> subprocess.CompletedProcess:
 def poll_safety_state() -> str | None:
     result = run([
         "docker", "exec", CONTAINER_NAME, "bash", "-c",
-        "source /opt/ros/humble/setup.bash && "
+        "source /opt/ros/jazzy/setup.bash && "
         "timeout 3 ros2 topic echo /safety/state --once --field data",
     ])
     if result.returncode != 0 or not result.stdout.strip():

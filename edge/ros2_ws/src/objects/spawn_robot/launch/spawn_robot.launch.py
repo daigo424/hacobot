@@ -11,6 +11,7 @@ import os
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
@@ -56,21 +57,40 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # 実際にスポーンする実体はturtlebot3_gazebo本家のmodel.sdfを使う
-    sdf_tmp = build_sdf_with_color(model_folder, robot_id_str)
+    sdf_tmp = build_spawn_sdf(model_folder, robot_id_str)
+    bridge_yaml_tmp = build_bridge_yaml(model_folder, robot_id_str)
 
     spawn_turtlebot3 = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
+        package='ros_gz_sim',
+        executable='create',
         arguments=[
-            '-entity', ns,
+            '-name', ns,
             '-file', sdf_tmp.name,
             '-x', x_pose,
             '-y', y_pose,
             '-z', z_pose,
-            '-robot_namespace', ns,
-            '-timeout', '180'
         ],
         output='screen'
+    )
+
+    # ros_topic_nameは相対名のままなので、PushRosNamespace(ns)配下に置くだけで
+    # /tb3_0N/scan等に自動的に収まる(gz_topic_nameは build_bridge_yaml 側で
+    # ロボットごとに接頭辞を付けて衝突を避けている)
+    gz_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=['--ros-args', '-p', f'config_file:={bridge_yaml_tmp.name}'],
+        output='screen',
+    )
+
+    # image_bridgeはGZ側・ROS側で同一のトピック名を使うため、ここだけは
+    # robot_group(PushRosNamespace)の外に置いて接頭辞付き名をそのまま渡す
+    # (中に入れると二重にnamespaceが積まれる)
+    image_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        arguments=[f'{ns}/camera/image_raw'],
+        output='screen',
     )
 
     # --- Nav2(SLAM Toolbox込み) ---
@@ -150,9 +170,18 @@ def launch_setup(context, *args, **kwargs):
         SetRemap(src='/cmd_vel_nav2', dst='cmd_vel_nav2'),
         SetRemap(src='/cmd_vel', dst='cmd_vel'),
         robot_state_publisher,
+        gz_bridge,
         safety_cmd,
         initial_map_seeder_cmd,
     ])
+
+    # nav2_bringupのslam_launch.pyはslam_toolbox付属のautostart機構に頼っているが、
+    # 実測では自動発火しないことが多いため、configure/activateを明示的に呼ぶ
+    # (activate_slam_toolbox.py内で対象ノードが上がるまでリトライする)
+    activate_slam_toolbox_cmd = ExecuteProcess(
+        cmd=['ros2', 'run', 'nav2_bringup_custom', 'activate_slam_toolbox.py', f'/{ns}/slam_toolbox'],
+        output='screen',
+    )
 
     # 前回異常終了で同名エンティティが残っていると"already exists"で失敗するため、
     # スポーン前にベストエフォートで削除してからspawnする。
@@ -184,13 +213,22 @@ def launch_setup(context, *args, **kwargs):
     return [
         robot_group,
         nav2_cmd,
+        image_bridge,
+        activate_slam_toolbox_cmd,
         delete_existing_cmd,
         spawn_after_cleanup,
         clean_up_action,
     ]
 
 
-def build_sdf_with_color(model_folder, robot_id_str):
+# gz sim(Harmonic)はモデルインスタンスごとにgzトピックを自動分離しない
+# (同一SDFから2体スポーンすると両方とも/scan・/cmd_vel等に衝突することを実測で確認済み)。
+# spawnするSDF内のトピック名と、ROS側にブリッジするgzトピック名の両方に、この接頭辞で
+# 揃えて明示的に分離する。
+GZ_TOPIC_TAGS = ('topic', 'odom_topic', 'tf_topic', 'camera_info_topic')
+
+
+def build_spawn_sdf(model_folder, robot_id_str):
     ns = f"tb3_{robot_id_str}"
     sdf_src_path = os.path.join(
         get_package_share_directory('turtlebot3_gazebo'), 'models', model_folder, 'model.sdf'
@@ -214,15 +252,10 @@ def build_sdf_with_color(model_folder, robot_id_str):
             # visual名が共通のままだとGazeboがマテリアルを使い回し、2体目以降の色が変わらない
             visual.set('name', f'base_visual_{ns}')
 
-    # tf2_ros::TransformBroadcasterはnamespaceに関わらず"/tf"を絶対パスで固定使用するため、
-    # SDF側で明示的に相対化する
-    for plugin in root.iter('plugin'):
-        if plugin.get('name') == 'turtlebot3_diff_drive':
-            ros_tag = plugin.find('ros')
-            if ros_tag is not None:
-                for src, dst in (('/tf', 'tf'), ('/tf_static', 'tf_static')):
-                    remap = ET.SubElement(ros_tag, 'remapping')
-                    remap.text = f'{src}:={dst}'
+    for tag_name in GZ_TOPIC_TAGS:
+        for el in root.iter(tag_name):
+            if el.text:
+                el.text = f'{ns}/{el.text.lstrip("/")}'
 
     sdf_content = '<?xml version="1.0" ?>\n' + ET.tostring(root, encoding='unicode')
     sdf_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.sdf', delete=False)
@@ -230,6 +263,28 @@ def build_sdf_with_color(model_folder, robot_id_str):
     sdf_tmp.close()
 
     return sdf_tmp
+
+
+def build_bridge_yaml(model_folder, robot_id_str):
+    ns = f"tb3_{robot_id_str}"
+    bridge_src_path = os.path.join(
+        get_package_share_directory('turtlebot3_gazebo'), 'params', f'{model_folder}_bridge.yaml'
+    )
+    with open(bridge_src_path, 'r') as f:
+        entries = yaml.safe_load(f)
+
+    # clockはワールド全体で共有すべき単一のクロックなので、ロボットごとの接頭辞を付けず
+    # ここでは除外する(create_world.launch.py側でワールド共通のbridgeとして扱う)
+    per_robot_entries = [e for e in entries if e['gz_topic_name'] != 'clock']
+    for entry in per_robot_entries:
+        entry['gz_topic_name'] = f'{ns}/{entry["gz_topic_name"].lstrip("/")}'
+
+    bridge_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    yaml.safe_dump(per_robot_entries, bridge_tmp)
+    bridge_tmp.close()
+
+    return bridge_tmp
+
 
 def generate_launch_description():
     ld = LaunchDescription()

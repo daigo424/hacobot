@@ -1,10 +1,14 @@
 # hacobot Nav2パラメータ (TurtleBot3 Waffle + SLAM Toolbox版)
 #
-# ベースは ros-humble-turtlebot3-navigation2 パッケージ付属の param/waffle.yaml。
+# ベースは ros-humble-turtlebot3-navigation2 パッケージ付属の param/waffle.yaml
+# (作成当時のROS2ディストリビューション。現在はJazzy向けに移植済み)。
 # 「SLAM Toolbox + Nav2 Planner/Controller」構成(=事前地図を使うAMCLではなく、
 # 走行しながら地図を作るオンラインSLAMを自己位置推定に使う)にするため、
-# 元のwaffle.yamlから amcl / map_server / docking_server(未使用) を外し、
-# 代わりに slam_toolbox のパラメータ(slam_toolbox付属 mapper_params_online_sync.yaml が元)を追加している。
+# 元のwaffle.yamlから amcl / map_server を外し、代わりに slam_toolbox のパラメータ
+# (slam_toolbox付属 mapper_params_online_sync.yaml が元)を追加している。
+# docking_server(実際には未使用)は、このNav2バージョンのnavigation_launch.pyが
+# lifecycle_nodesにハードコードで含めてしまうため、configureを通すだけの
+# ダミー設定として残している(詳細は下のdocking_serverセクションのコメント参照)。
 # map_saver は nav2_bringup の slam_launch.py がライフサイクル管理するため必要(SLAM中の地図保存用)。
 
 bt_navigator:
@@ -202,15 +206,27 @@ map_saver:
     occupied_thresh_default: 0.65
     map_subscribe_transient_local: true
 
+# このNav2バージョンのnavigation_launch.pyはdocking_server(未使用)を
+# lifecycle_nodesにハードコードで含めており、外す手段が無い。configureに
+# 失敗するとlifecycle_manager全体のbringupが中断されるため、最低限configureが
+# 通るダミーのドックプラグインを与える(ドック機能自体は使わない)。
+# controller_server/velocity_smootherはenable_stamped_cmd_vel(cmd_velの
+# TwistStamped化)がデフォルトtrueなのに対しdocking_serverはデフォルトfalseで、
+# 同じcmd_vel_nav2に型の異なるpublisherを作ろうとしてクラッシュするため、
+# ここで揃える。
+docking_server:
+  ros__parameters:
+    enable_stamped_cmd_vel: true
+    dock_plugins: ["dummy_dock"]
+    dummy_dock:
+      plugin: "opennav_docking::SimpleNonChargingDock"
+
 planner_server:
   ros__parameters:
     expected_planner_frequency: 10.0
     planner_plugins: ["GridBased"]
     GridBased:
-      # このNav2ビルドではnav2_navfn_plannerのみ旧来の"/"区切りpluginlib名でエクスポートされている
-      # (他プラグインは"::"で動作確認済み。実機で "does not exist. Declared types are
-      # nav2_navfn_planner/NavfnPlanner ..." というFATALエラーが出て判明した)
-      plugin: "nav2_navfn_planner/NavfnPlanner"
+      plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
       use_astar: false
       allow_unknown: true
@@ -223,18 +239,16 @@ behavior_server:
     global_footprint_topic: global_costmap/published_footprint
     cycle_frequency: 10.0
     behavior_plugins: ["spin", "backup", "drive_on_heading", "wait", "assisted_teleop"]
-    # nav2_navfn_plannerと同様、このNav2ビルドのnav2_behaviorsも旧来の"/"区切り
-    # pluginlib名でエクスポートされている(FATALエラーの実出力で確認)
     spin:
-      plugin: "nav2_behaviors/Spin"
+      plugin: "nav2_behaviors::Spin"
     backup:
-      plugin: "nav2_behaviors/BackUp"
+      plugin: "nav2_behaviors::BackUp"
     drive_on_heading:
-      plugin: "nav2_behaviors/DriveOnHeading"
+      plugin: "nav2_behaviors::DriveOnHeading"
     wait:
-      plugin: "nav2_behaviors/Wait"
+      plugin: "nav2_behaviors::Wait"
     assisted_teleop:
-      plugin: "nav2_behaviors/AssistedTeleop"
+      plugin: "nav2_behaviors::AssistedTeleop"
     local_frame: odom
     global_frame: map
     robot_base_frame: base_link

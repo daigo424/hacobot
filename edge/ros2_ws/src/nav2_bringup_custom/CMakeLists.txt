@@ -10,4 +10,9 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/activate_slam_toolbox.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

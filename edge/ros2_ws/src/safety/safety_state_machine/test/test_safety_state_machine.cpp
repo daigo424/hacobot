@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "gtest/gtest.h"
 #include "lifecycle_msgs/msg/transition.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -35,15 +36,15 @@ protected:
       "/safety/anomaly_event", rclcpp::QoS(10));
     recovery_pub_ = helper_node_->create_publisher<std_msgs::msg::Empty>(
       "/safety/recovery_command", rclcpp::QoS(10));
-    nav2_cmd_vel_pub_ = helper_node_->create_publisher<geometry_msgs::msg::Twist>(
+    nav2_cmd_vel_pub_ = helper_node_->create_publisher<geometry_msgs::msg::TwistStamped>(
       "/cmd_vel_nav2", rclcpp::QoS(10));
     sensors_ok_pub_ = helper_node_->create_publisher<std_msgs::msg::Bool>(
       "/safety/sensors_ok", rclcpp::QoS(1).transient_local());
 
-    cmd_vel_sub_ = helper_node_->create_subscription<geometry_msgs::msg::Twist>(
+    cmd_vel_sub_ = helper_node_->create_subscription<geometry_msgs::msg::TwistStamped>(
       "/cmd_vel", rclcpp::QoS(10),
-      [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
-        last_cmd_vel_ = *msg;
+      [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+        last_cmd_vel_ = msg->twist;
         cmd_vel_count_++;
       });
 
@@ -94,9 +95,9 @@ protected:
   rclcpp::Node::SharedPtr helper_node_;
   rclcpp::Publisher<safety_msgs::msg::AnomalyEvent>::SharedPtr anomaly_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr recovery_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr nav2_cmd_vel_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr nav2_cmd_vel_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr sensors_ok_pub_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub_;
   geometry_msgs::msg::Twist last_cmd_vel_;
   int cmd_vel_count_{0};
 };
@@ -171,9 +172,9 @@ TEST_F(SafetyStateMachineTest, RecoveryRequiresTwoExplicitCommands)
 
 TEST_F(SafetyStateMachineTest, CmdVelIsZeroedDuringSafeStop)
 {
-  geometry_msgs::msg::Twist nav2_cmd;
-  nav2_cmd.linear.x = 1.0;
-  nav2_cmd.angular.z = 0.5;
+  geometry_msgs::msg::TwistStamped nav2_cmd;
+  nav2_cmd.twist.linear.x = 1.0;
+  nav2_cmd.twist.angular.z = 0.5;
   nav2_cmd_vel_pub_->publish(nav2_cmd);
   spin_for(60ms);
 
@@ -211,8 +212,8 @@ TEST_F(SafetyStateMachineTest, CmdVelRelayedDuringSafeStopWhenSensorsHealthy)
   spin_for(80ms);
   ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
 
-  geometry_msgs::msg::Twist nav2_cmd;
-  nav2_cmd.linear.x = 0.8;
+  geometry_msgs::msg::TwistStamped nav2_cmd;
+  nav2_cmd.twist.linear.x = 0.8;
   nav2_cmd_vel_pub_->publish(nav2_cmd);
   spin_for(60ms);
 
@@ -231,8 +232,8 @@ TEST_F(SafetyStateMachineTest, EstopLatchBlocksCmdVelEvenWhenSensorsHealthy)
   ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
   EXPECT_TRUE(node_->estop_latched());
 
-  geometry_msgs::msg::Twist nav2_cmd;
-  nav2_cmd.linear.x = 0.8;
+  geometry_msgs::msg::TwistStamped nav2_cmd;
+  nav2_cmd.twist.linear.x = 0.8;
   nav2_cmd_vel_pub_->publish(nav2_cmd);
   spin_for(60ms);
 

@@ -8,7 +8,7 @@ cmd_vel_nav2はsafety_state_machineを経由するため、センサー異常時
 """
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TwistStamped
 from visualization_msgs.msg import Marker
 
 SEED_DURATION_SEC = 30.0
@@ -20,7 +20,7 @@ class InitialMapSeeder(Node):
 
     def __init__(self):
         super().__init__('initial_map_seeder')
-        self._pub = self.create_publisher(Twist, 'cmd_vel_nav2', 10)
+        self._pub = self.create_publisher(TwistStamped, 'cmd_vel_nav2', 10)
         # RVizで「マッピング中」かどうかを見えるようにする、ロボット追従のテキストマーカー
         self._marker_pub = self.create_publisher(Marker, 'mapping_status', 10)
         # コンストラクタ時点では/clockをまだ一度も受信しておらずnow()が0を返すことがあり、
@@ -59,16 +59,17 @@ class InitialMapSeeder(Node):
 
         elapsed_sec = (now - self._start_time).nanoseconds / 1e9
         if elapsed_sec >= SEED_DURATION_SEC:
-            self._pub.publish(Twist())
+            self._pub.publish(TwistStamped())
             self._publish_status_marker(active=False)
             self.get_logger().info('初期地図の自動生成を終了しました')
             self._timer.cancel()
             return
 
-        twist = Twist()
-        twist.linear.x = 0.15
-        twist.angular.z = 0.4
-        self._pub.publish(twist)
+        cmd = TwistStamped()
+        cmd.header.stamp = now.to_msg()
+        cmd.twist.linear.x = 0.15
+        cmd.twist.angular.z = 0.4
+        self._pub.publish(cmd)
         self._publish_status_marker(active=True)
 
 

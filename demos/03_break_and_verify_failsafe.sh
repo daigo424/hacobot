@@ -13,13 +13,13 @@ WATCH_SEC="${WATCH_SEC:-20}"
 
 safety_state() {
   timeout 3 docker exec "$CONTAINER_NAME" bash -c \
-    "source /opt/ros/humble/setup.bash && \
+    "source /opt/ros/jazzy/setup.bash && \
      timeout 2 ros2 topic echo /safety/state --once --field data" 2>/dev/null \
     | head -1 | tr -d '\r'
 }
 
 if ! docker exec "$CONTAINER_NAME" bash -c \
-    "source /opt/ros/humble/setup.bash && ros2 node list 2>/dev/null | grep -q /safety_state_machine"; then
+    "source /opt/ros/jazzy/setup.bash && ros2 node list 2>/dev/null | grep -q /safety_state_machine"; then
   fail "safety_state_machineが起動していません。先に demos/02_launch_stack.sh を実行してください。"
   exit 1
 fi
@@ -55,5 +55,5 @@ echo
 log "復旧を試す場合は以下を実行してください(2回送るとNORMALへ戻ります。"
 log "ただしNav2は死んだままなので、根本原因が直っていなければ再びSAFE_STOPへ戻るのが正しい挙動です):"
 echo "  docker exec $CONTAINER_NAME bash -c \\"
-echo "    \"source /opt/ros/humble/setup.bash && \\"
+echo "    \"source /opt/ros/jazzy/setup.bash && \\"
 echo "     ros2 topic pub -1 /safety/recovery_command std_msgs/msg/Empty '{}'\""

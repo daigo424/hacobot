@@ -62,8 +62,8 @@ Kafkaへ到達できるようになり、本物のKafkaメッセージで`estop_
 
 | レイヤー | 技術 |
 |---|---|
-| シミュレーション | Gazebo Classic, TurtleBot3 |
-| ナビゲーション | Nav2, slam_toolbox (ROS2 Humble) |
+| シミュレーション | Gazebo Harmonic, TurtleBot3 |
+| ナビゲーション | Nav2, slam_toolbox (ROS2 Jazzy) |
 | フェイルセーフ層 | C++ (rclcpp_lifecycle), 独自メッセージ(`safety_msgs`) |
 | メッセージング | Kafka (Strimzi Operator) |
 | ストレージ | SeaweedFS (S3互換)※ |
