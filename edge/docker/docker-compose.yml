@@ -1,3 +1,9 @@
+# nameを固定しておかないと、-p未指定時にdocker composeがディレクトリ名("docker")を
+# プロジェクト名にしてしまい、Makefile側の`-p hacobot`と別プロジェクト扱いされて
+# container_name(hacobot_grafana等、固定名)が衝突する
+# (VS Code Dev Containers拡張機能がこのファイルを-p指定なしで直接起動するため)。
+name: hacobot
+
 services:
   ros2-nav2:
     build:
