@@ -15,7 +15,8 @@ WatchdogNode::WatchdogNode(const rclcpp::NodeOptions & options)
   // 起動直後のCPU競合でセンサー途絶の誤検知が起きたため8000ms->40000msに拡大
   // (詳細・実測根拠はREADME「既知の制約」参照)
   startup_grace_period_ms_(40000),
-  metrics_port_(9103)
+  metrics_port_(9103),
+  sensors_ok_(true)
 {
   // "トピック名@メッセージ型" 形式。GenericSubscriptionの生成に型名が必須なため。
   this->declare_parameter<std::vector<std::string>>(
@@ -67,9 +68,13 @@ WatchdogNode::CallbackReturn WatchdogNode::on_configure(
     last_received_[topic.name] = now;
     is_stale_[topic.name] = false;
   }
+  sensors_ok_ = true;
 
   anomaly_pub_ = this->create_publisher<safety_msgs::msg::AnomalyEvent>(
     "/safety/anomaly_event", rclcpp::QoS(10));
+  // 遅れて起動したsafety_state_machineでも直近の状態がすぐ分かるようtransient_localにする
+  sensors_ok_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+    "/safety/sensors_ok", rclcpp::QoS(1).transient_local());
 
   RCLCPP_INFO(
     this->get_logger(),
@@ -83,7 +88,14 @@ WatchdogNode::CallbackReturn WatchdogNode::on_activate(
   const rclcpp_lifecycle::State & /*state*/)
 {
   anomaly_pub_->on_activate();
+  sensors_ok_pub_->on_activate();
   activated_at_ = this->now();
+
+  // transient_localは"publish済みの値"しか後から来た購読者に配らないため、
+  // 起動直後に一度明示的にpublishしておく
+  std_msgs::msg::Bool initial_msg;
+  initial_msg.data = sensors_ok_;
+  sensors_ok_pub_->publish(initial_msg);
 
   subs_.clear();
   for (const auto & topic : monitored_topics_) {
@@ -93,6 +105,7 @@ WatchdogNode::CallbackReturn WatchdogNode::on_activate(
       [this, topic_name](std::shared_ptr<rclcpp::SerializedMessage> /*msg*/) {
         last_received_[topic_name] = this->now();
         is_stale_[topic_name] = false;
+        update_sensors_ok();
       });
     subs_.push_back(sub);
   }
@@ -116,6 +129,7 @@ WatchdogNode::CallbackReturn WatchdogNode::on_deactivate(
   subs_.clear();
   recovery_sub_.reset();
   anomaly_pub_->on_deactivate();
+  sensors_ok_pub_->on_deactivate();
 
   RCLCPP_INFO(this->get_logger(), "Deactivated");
   return CallbackReturn::SUCCESS;
@@ -125,6 +139,7 @@ WatchdogNode::CallbackReturn WatchdogNode::on_cleanup(
   const rclcpp_lifecycle::State & /*state*/)
 {
   anomaly_pub_.reset();
+  sensors_ok_pub_.reset();
   last_received_.clear();
   is_stale_.clear();
   monitored_topics_.clear();
@@ -141,6 +156,7 @@ WatchdogNode::CallbackReturn WatchdogNode::on_shutdown(
   subs_.clear();
   recovery_sub_.reset();
   anomaly_pub_.reset();
+  sensors_ok_pub_.reset();
   metrics_.stop();
 
   RCLCPP_INFO(this->get_logger(), "Shutdown");
@@ -195,7 +211,30 @@ void WatchdogNode::check_timeouts()
         "watchdog_anomaly_total{topic=\"" + name + "\"}",
         "Number of sensor topic timeout anomalies detected, by topic");
       RCLCPP_ERROR(this->get_logger(), "Anomaly detected: %s", event.reason.c_str());
+      update_sensors_ok();
     }
+  }
+}
+
+void WatchdogNode::update_sensors_ok()
+{
+  bool all_ok = true;
+  for (const auto & entry : is_stale_) {
+    if (entry.second) {
+      all_ok = false;
+      break;
+    }
+  }
+
+  if (all_ok == sensors_ok_) {
+    return;
+  }
+  sensors_ok_ = all_ok;
+
+  std_msgs::msg::Bool msg;
+  msg.data = sensors_ok_;
+  if (sensors_ok_pub_->is_activated()) {
+    sensors_ok_pub_->publish(msg);
   }
 }
 

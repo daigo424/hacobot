@@ -9,6 +9,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "safety_msgs/msg/anomaly_event.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "watchdog/watchdog_node.hpp"
 
@@ -46,6 +47,13 @@ protected:
         last_anomaly_severity_ = msg->severity;
       });
 
+    sensors_ok_sub_ = helper_node_->create_subscription<std_msgs::msg::Bool>(
+      "/safety/sensors_ok", rclcpp::QoS(1).transient_local(),
+      [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        last_sensors_ok_ = msg->data;
+        sensors_ok_received_count_++;
+      });
+
     executor_.add_node(node_->get_node_base_interface());
     executor_.add_node(helper_node_);
 
@@ -81,6 +89,9 @@ protected:
   bool anomaly_received_;
   std::string last_anomaly_source_;
   std::string last_anomaly_severity_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sensors_ok_sub_;
+  bool last_sensors_ok_{true};
+  int sensors_ok_received_count_{0};
 };
 
 TEST_F(WatchdogTest, NoAnomalyWhileSensorIsPublishing)
@@ -122,6 +133,30 @@ TEST_F(WatchdogTest, RecoveryCommandAllowsRedetectionWithoutRealSensorData)
   spin_for(200ms);
   EXPECT_TRUE(anomaly_received_);
   EXPECT_EQ(last_anomaly_source_, "/test_scan");
+}
+
+TEST_F(WatchdogTest, SensorsOkStartsTrueAndFlipsFalseOnTimeout)
+{
+  // activate直後にtransient_localで初期値(true)が届いているはず
+  EXPECT_TRUE(last_sensors_ok_);
+
+  // 意図的にセンサーpublishを止め、タイムアウト(300ms)を超えるまで待つ
+  spin_for(500ms);
+
+  EXPECT_FALSE(last_sensors_ok_);
+}
+
+TEST_F(WatchdogTest, SensorsOkFlipsBackTrueWhenSensorRecovers)
+{
+  spin_for(500ms);
+  ASSERT_FALSE(last_sensors_ok_);
+
+  for (int i = 0; i < 3; ++i) {
+    scan_pub_->publish(sensor_msgs::msg::LaserScan());
+    spin_for(50ms);
+  }
+
+  EXPECT_TRUE(last_sensors_ok_);
 }
 
 int main(int argc, char ** argv)

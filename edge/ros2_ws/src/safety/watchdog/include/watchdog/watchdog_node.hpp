@@ -13,6 +13,7 @@
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
 #include "safety_metrics/prometheus_exporter.hpp"
 #include "safety_msgs/msg/anomaly_event.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 
 namespace watchdog
@@ -33,6 +34,12 @@ namespace watchdog
 // safety_state_machineがNORMALへ復旧しても実際にはセンサーが復旧していない場合に、
 // 次のcheck_timeouts()周期で即座に再検知・再通知できるようにするため
 // (heartbeat_monitorと同じ設計、詳細はそちらのコメント参照)。
+//
+// /safety/sensors_ok(transient_local)に、監視対象が全て非stale状態かどうかを
+// 継続的にpublishする。/safety/anomaly_eventは途絶の"検知イベント"のみでSAFE_STOP後は
+// 沈黙するため、safety_state_machineがSAFE_STOP中に「今センサーが実際に生きているか」を
+// リアルタイムに判定する材料がこの状態だけ別に必要(センサー正常時はSAFE_STOP中でも
+// cmd_velを中継してよい、という設計のため)。
 class WatchdogNode : public rclcpp_lifecycle::LifecycleNode
 {
 public:
@@ -55,6 +62,7 @@ private:
 
   void check_timeouts();
   void on_recovery_command(const std_msgs::msg::Empty::SharedPtr msg);
+  void update_sensors_ok();
   static std::vector<MonitoredTopic> parse_monitored_topics(
     const std::vector<std::string> & raw_entries);
 
@@ -67,11 +75,13 @@ private:
   rclcpp::Time activated_at_;
   std::map<std::string, rclcpp::Time> last_received_;
   std::map<std::string, bool> is_stale_;
+  bool sensors_ok_;
   std::vector<rclcpp::GenericSubscription::SharedPtr> subs_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr recovery_sub_;
 
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<safety_msgs::msg::AnomalyEvent>>
     anomaly_pub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>> sensors_ok_pub_;
   rclcpp::TimerBase::SharedPtr check_timer_;
 
   safety_metrics::PrometheusExporter metrics_;
