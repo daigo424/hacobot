@@ -1,5 +1,5 @@
 {
-  "name": "ROS2 Docker Compose Environment",
+  "name": "hacobot",
   "postCreateCommand": "sudo apt update -qq && sudo apt install -y --no-install-recommends lcov gdb clangd && echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc",
   "dockerComposeFile": "../edge/docker/docker-compose.yml",
   "service": "ros2-nav2", // ⚠️あなたのdocker-compose.ymlに書かれているROS2のサービス名に変えてください

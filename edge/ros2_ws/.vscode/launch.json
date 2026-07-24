@@ -16,6 +16,20 @@
       "cwd": "${workspaceFolder}"
     },
     {
+      "name": "ROS2: Create World (create_world)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 run create_world world_supervisor.py",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ROS2: Spawn Robot",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot spawn_robot.launch.py robot_id:=${input:spawnId} x_pose:=${input:xPose} y_pose:=${input:yPose}",
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "ROS2: Attach to Running Node",
       "type": "cppdbg",
       "request": "attach",
@@ -84,6 +98,24 @@
       "id": "executableName",
       "type": "promptString",
       "description": "実行ファイル（ノード）名を入力してください"
+    },
+    {
+        "id": "spawnId",
+        "type": "promptString",
+        "description": "生成するロボットの番号を入力してください (例: 01, 02)",
+        "default": "01"
+    },
+    {
+        "id": "xPose",
+        "type": "promptString",
+        "description": "出現位置 X 座標",
+        "default": "0.0"
+    },
+    {
+        "id": "yPose",
+        "type": "promptString",
+        "description": "出現位置 Y 座標",
+        "default": "0.0"
     }
   ]
 }

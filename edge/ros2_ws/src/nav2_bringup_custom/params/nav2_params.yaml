@@ -326,7 +326,12 @@ slam_toolbox:
     min_laser_range: 0.0
     max_laser_range: 20.0
     minimum_time_interval: 0.5
-    transform_timeout: 0.2
+    # このWSL2環境ではgzserver/Nav2/SLAMを同時に動かすとCPU競合でTF配信に
+    # 数百ms単位のジッターが乗ることがあり(README「既知の制約」参照)、既定の0.2sだと
+    # slam_toolboxのメッセージフィルタがbase_scanのTF待ちで恒常的にタイムアウトし、
+    # 一度も/mapをpublishできなくなることを実際に確認した。安全層のtimeout_msとは違い
+    # ここは検知速度が安全特性そのものではないため、広げても設計上の問題はない。
+    transform_timeout: 1.0
     tf_buffer_duration: 30.
     stack_size_to_use: 40000000
     enable_interactive_mode: true

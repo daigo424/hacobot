@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.8)
-project(nav2_bringup_custom)
+project(spawn_robot)
 
 find_package(ament_cmake REQUIRED)
 
 install(DIRECTORY
   launch
-  params
-  rviz
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/entity_reaper.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()

@@ -33,22 +33,29 @@ seaweedfs-ui:
 # PKGを省略するとワークスペース全体が対象になる。
 #
 # 例:
-#   make build PKG=heartbeat_monitor
-#   make test  PKG=edge/ros2_ws/src/safety/watchdog
-#   make build-test PKG=safety_state_machine
-#   make build   # 全パッケージ
+#   make colcon-build PKG=heartbeat_monitor
+#   make colcon-test  PKG=edge/ros2_ws/src/safety/watchdog
+#   make colcon-build-test PKG=safety_state_machine
+#   make colcon-build   # 全パッケージ
 
-.PHONY: up build test build-test
+.PHONY: up build test build-test new-launch-pkg rviz
 
-ROS2_CONTAINER ?= ros2_nav2_container
-ROS2_WS        := /workspace
-PKG            ?=
-PKG_NAME       := $(if $(PKG),$(notdir $(PKG)),)
-COLCON_SELECT  := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
+COMPOSE_PJ_NAME    := hacobot
+COMPOSE            := docker compose -f edge/docker/docker-compose.yml -p $(COMPOSE_PJ_NAME)
+RUN                := $(COMPOSE) run --rm --remove-orphans
+EXEC               := $(COMPOSE) exec
+ROS2_SERVICE       := ros2-nav2
+ROS2_CONTAINER     := ros2_nav2_container
+ROS2_WS            := /workspace
+PKG                ?=
+PKG_NAME           := $(if $(PKG),$(notdir $(PKG)),)
+COLCON_SELECT      := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
+CMD_ROS2_SOURCE    := source /opt/ros/humble/setup.bash
+CMD_ROS2_WS_SOURCE := source $(ROS2_WS)/install/setup.bash
 
 up:
 	@test -f .env || cp .env.example .env
-	docker compose -f edge/docker/docker-compose.yml --env-file .env up -d
+	$(COMPOSE) --env-file .env up -d
 	@. ./.env 2>/dev/null; \
 	echo -----------------------------; \
 	echo "Grafana: http://localhost:$${GRAFANA_PORT:-3001}"; \
@@ -57,23 +64,55 @@ up:
 	echo -----------------------------
 
 down:
-	docker compose -f edge/docker/docker-compose.yml --env-file .env down
+	$(COMPOSE) --env-file .env down
 
 build:
-	docker exec $(ROS2_CONTAINER) bash -c "\
-		source /opt/ros/humble/setup.bash && \
-		( [ -f $(ROS2_WS)/install/setup.bash ] && source $(ROS2_WS)/install/setup.bash || true ) && \
-		cd $(ROS2_WS) && \
-		colcon build $(COLCON_SELECT)"
+	$(COMPOSE) --env-file .env build --no-cache
 
-test:
+# launchファイルだけを持つ新しいbringupパッケージ(nav2_bringup_custom, safety_bringupと
+# 同種)を対話的に作成する(scripts/create_launch_package.py)。colcon build後、他のlaunch
+# ファイルからIncludeLaunchDescriptionで呼び出せる状態まで生成する。
+# 対話入力が要るためホストのpython3で直接実行する(コンテナ経由にしない)。
+new-launch-pkg:
+	python3 scripts/create_launch_package.py
+
+# spawn_robotが起動したロボット(既定はROBOT_ID=tb3_01)の地図/コストマップ/LaserScan/
+# RobotModelを表示するRViz設定で起動する
+# (edge/ros2_ws/src/nav2_bringup_custom/rviz/hacobot_view.rviz)。
+# 各ロボットは専用の/tb3_0N/tfを持つ(ロボットごとに完全独立させる設計。詳細は
+# spawn_robot.launch.pyのdocstring参照)ため、RViz自身のプロセスにも
+# /tf:=/$(ROBOT_ID)/tfのremapが必要(無いとRVizはグローバルな/tfしか見ず何も表示されない)。
+# hacobot_view.rviz内の全トピックは"tb3_01"という文字列だけで一貫して書かれているため、
+# sedで一括置換すれば任意のROBOT_IDに対応できる(ファイルは複製しない)。
+# 例: make rviz ROBOT_ID=tb3_02
+ROBOT_ID ?= tb3_01
+
+rviz:
+	$(EXEC) $(ROS2_SERVICE) bash -c "\
+		$(CMD_ROS2_SOURCE) && \
+		$(CMD_ROS2_WS_SOURCE) && \
+		RVIZ_SRC=\$$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && \
+		RVIZ_TMP=/tmp/hacobot_view_$(ROBOT_ID).rviz && \
+		sed 's/tb3_01/$(ROBOT_ID)/g' \$$RVIZ_SRC > \$$RVIZ_TMP && \
+		rviz2 -d \$$RVIZ_TMP \
+			--ros-args -r /tf:=/$(ROBOT_ID)/tf -r /tf_static:=/$(ROBOT_ID)/tf_static"
+
+login:
+	$(EXEC) $(ROS2_SERVICE) bash -c \
+	  "$(CMD_ROS2_SOURCE) && $(CMD_ROS2_WS_SOURCE) && bash"
+
+colcon:
+	$(EXEC) $(ROS2_SERVICE) bash -c \
+	  "$(CMD_ROS2_SOURCE) && $(CMD_ROS2_WS_SOURCE) && \
+	   cd $(ROS2_WS) && $(CMD_RUN)"
+
+colcon-build:
+	$(MAKE) colcon CMD_RUN="colcon build $(COLCON_SELECT)"
+colcon-test:
 	# --executor sequential: 複数パッケージを並列実行すると、別パッケージのgtest同士が
 	# 同じROSトピック名(例: /safety/anomaly_event)で混信することがあるため直列実行する
-	docker exec $(ROS2_CONTAINER) bash -c "\
-		source /opt/ros/humble/setup.bash && \
-		source $(ROS2_WS)/install/setup.bash && \
-		cd $(ROS2_WS) && \
-		colcon test --executor sequential $(COLCON_SELECT) && \
-		colcon test-result --verbose"
+	$(MAKE) colcon CMD_RUN="colcon test --executor sequential $(COLCON_SELECT) && colcon test-result --verbose"
+colcon-build-test: colcon-build colcon-test
 
-build-test: build test
+topic-list:
+	$(MAKE) colcon CMD_RUN="ros2 topic list"
