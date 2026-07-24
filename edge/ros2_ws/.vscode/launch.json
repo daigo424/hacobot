@@ -5,28 +5,28 @@
       "name": "ROS2: Launch Gazebo Sim (nav2_bringup_custom)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom gazebo_sim.launch.py",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom gazebo_sim.launch.py",
       "cwd": "${workspaceFolder}"
     },
     {
       "name": "ROS2: Launch Nav2 Bringup (nav2_bringup_custom)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom nav2_bringup.launch.py",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom nav2_bringup.launch.py",
       "cwd": "${workspaceFolder}"
     },
     {
       "name": "ROS2: Create World (create_world)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 run create_world world_supervisor.py",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 run create_world world_supervisor.py",
       "cwd": "${workspaceFolder}"
     },
     {
       "name": "ROS2: Spawn Robot",
       "type": "node-terminal",
       "request": "launch",
-      "command": "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot spawn_robot.launch.py robot_id:=${input:spawnId} x_pose:=${input:xPose} y_pose:=${input:yPose}",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot spawn_robot.launch.py robot_id:=${input:spawnId} x_pose:=${input:xPose} y_pose:=${input:yPose}",
       "cwd": "${workspaceFolder}"
     },
     {

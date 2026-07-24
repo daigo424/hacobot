@@ -18,7 +18,7 @@ before="$(docker exec "$CONTAINER_NAME" bash -c \
   "ls /testing/soak_test/reports 2>/dev/null" || true)"
 
 if ! docker exec "$CONTAINER_NAME" bash -c \
-    "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
+    "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
      cd /testing/soak_test && \
      python3 run_soak_test.py --duration $DURATION --sample-interval $SAMPLE_INTERVAL"; then
   fail "run_soak_test.pyが異常終了しました"

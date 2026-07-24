@@ -6,6 +6,7 @@
 #include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
@@ -54,7 +55,7 @@ public:
 private:
   void on_anomaly_event(const safety_msgs::msg::AnomalyEvent::SharedPtr msg);
   void on_recovery_command(const std_msgs::msg::Empty::SharedPtr msg);
-  void on_nav2_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void on_nav2_cmd_vel(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
   void on_sensors_ok(const std_msgs::msg::Bool::SharedPtr msg);
   void on_cmd_vel_timer();
   void on_degraded_timeout();
@@ -68,6 +69,8 @@ private:
   int64_t metrics_port_;
 
   SafetyState safety_state_;
+  // Nav2 Jazzyはvelocity_smoother/controller_serverのenable_stamped_cmd_velが
+  // デフォルトtrueでTwistStampedを出すため、中継元もTwistStampedで受ける
   geometry_msgs::msg::Twist latest_nav2_cmd_vel_;
   // watchdogの/safety/sensors_okをそのまま反映(センサー由来のSAFE_STOP中でも、
   // センサー自体が生きていればcmd_vel_nav2を中継してよいかの判定に使う)。
@@ -80,10 +83,12 @@ private:
 
   rclcpp::Subscription<safety_msgs::msg::AnomalyEvent>::SharedPtr anomaly_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr recovery_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr nav2_cmd_vel_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr nav2_cmd_vel_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sensors_ok_sub_;
 
-  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>> cmd_vel_pub_;
+  // ros_gz_bridgeのcmd_velはgz.msgs.Twist(ステートレス)とのブリッジにTwistStampedを
+  // 要求するため、最終出力のみTwistStamped(内部の中継元latest_nav2_cmd_vel_はTwistのまま)
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::TwistStamped>> cmd_vel_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>> state_pub_;
 
   rclcpp::TimerBase::SharedPtr cmd_vel_timer_;

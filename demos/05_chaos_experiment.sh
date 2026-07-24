@@ -43,7 +43,7 @@ log "実験前のKafka Broker Pod: $pod_before (起動時刻: $age_before)"
 robot_side_observable=false
 if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME" && \
    docker exec "$CONTAINER_NAME" bash -c \
-     "source /opt/ros/humble/setup.bash && ros2 node list 2>/dev/null | grep -q /estop_bridge" && \
+     "source /opt/ros/jazzy/setup.bash && ros2 node list 2>/dev/null | grep -q /estop_bridge" && \
    [ "$(docker exec "$CONTAINER_NAME" bash -c \
      "timeout 3 bash -c '</dev/tcp/127.0.0.1/30092' 2>&1 && echo R || echo U")" = "R" ]; then
   robot_side_observable=true

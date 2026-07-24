@@ -10,7 +10,7 @@ namespace nav2_heartbeat_adapter
 Nav2HeartbeatAdapterNode::Nav2HeartbeatAdapterNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("nav2_heartbeat_adapter", options),
   liveness_topic_("/local_costmap/costmap"),
-  // このHumbleビルドのnav2_costmap_2dは/local_costmap/costmapに
+  // このNav2ビルドのnav2_costmap_2dは/local_costmap/costmapに
   // nav_msgs/msg/OccupancyGridとnav2_msgs/msg/Costmapの2つの型が
   // 同じトピック名で"存在"しうるが、実測では後者は一度もpublishされない
   // (40秒待っても0件)。前者(OccupancyGrid)は起動直後から確実にpublishされる

@@ -51,17 +51,21 @@ fi
 
 log "2. Gazeboを起動します..."
 docker exec -d "$CONTAINER_NAME" bash -c \
-  "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
+  "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
    ros2 launch nav2_bringup_custom gazebo_sim.launch.py > /tmp/demo_gazebo.log 2>&1"
 sleep 15
 
-# GUI(gzclient)は重いだけで仕組みに影響しないので落とす
+# GUIは重いだけで仕組みに影響しないので落とす。gazebo_sim.launch.py(turtlebot3本家)は
+# server(-s)/GUI(-g)を別プロセスとして起動するため"gz sim -g"だが、create_world.launch.py
+# (spawn_robotの新しいマルチロボット経路)は分割せず"gz sim server"/"gz sim gui"という
+# 名前の子プロセスに分かれるため、両方にマッチするパターンにする(片方だけだとGUIが
+# 残ったままになるか、経路によってはサーバーごと巻き添えで落ちる)
 docker exec "$CONTAINER_NAME" bash -c \
-  "ps aux | grep gzclient | grep -v grep | awk '{print \$2}' | xargs -r kill -9" >/dev/null 2>&1
+  "ps aux | grep -E 'gz sim (gui|-g( |\$))' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" >/dev/null 2>&1
 
 log "Nav2 + safety_bringup(5ノード)を起動します..."
 docker exec -d "$CONTAINER_NAME" bash -c \
-  "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && \
+  "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
    ros2 launch nav2_bringup_custom nav2_bringup.launch.py > /tmp/demo_nav2.log 2>&1"
 
 log "起動を待っています(最大60秒)..."

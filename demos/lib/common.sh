@@ -18,7 +18,7 @@ warn() { echo -e "${COLOR_YELLOW}[WARN]${COLOR_RESET} $*"; }
 # ros2_nav2_container内でコマンドを実行する(ROS2環境をsourceした状態で)
 ros2_exec() {
   docker exec "$CONTAINER_NAME" bash -c \
-    "source /opt/ros/humble/setup.bash && \
+    "source /opt/ros/jazzy/setup.bash && \
      ( [ -f /workspace/install/setup.bash ] && source /workspace/install/setup.bash || true ) && \
      $1"
 }

@@ -50,7 +50,7 @@ ROS2_WS            := /workspace
 PKG                ?=
 PKG_NAME           := $(if $(PKG),$(notdir $(PKG)),)
 COLCON_SELECT      := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
-CMD_ROS2_SOURCE    := source /opt/ros/humble/setup.bash
+CMD_ROS2_SOURCE    := source /opt/ros/jazzy/setup.bash
 CMD_ROS2_WS_SOURCE := source $(ROS2_WS)/install/setup.bash
 
 up:

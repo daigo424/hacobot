@@ -59,7 +59,7 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_configure(
   safety_state_ = SafetyState::NORMAL;
   latest_nav2_cmd_vel_ = geometry_msgs::msg::Twist();
 
-  cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
+  cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
     "/cmd_vel", rclcpp::QoS(10));
 
   // 遅れて起動したノードでも直近の状態がすぐ分かるようtransient_local(latch相当)にする
@@ -88,7 +88,7 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_activate(
     "/safety/recovery_command", rclcpp::QoS(10),
     std::bind(&SafetyStateMachineNode::on_recovery_command, this, std::placeholders::_1));
 
-  nav2_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+  nav2_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
     "/cmd_vel_nav2", rclcpp::QoS(10),
     std::bind(&SafetyStateMachineNode::on_nav2_cmd_vel, this, std::placeholders::_1));
 
@@ -218,9 +218,9 @@ void SafetyStateMachineNode::on_recovery_command(
   }
 }
 
-void SafetyStateMachineNode::on_nav2_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
+void SafetyStateMachineNode::on_nav2_cmd_vel(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
-  latest_nav2_cmd_vel_ = *msg;
+  latest_nav2_cmd_vel_ = msg->twist;
 }
 
 void SafetyStateMachineNode::on_sensors_ok(const std_msgs::msg::Bool::SharedPtr msg)
@@ -256,7 +256,10 @@ void SafetyStateMachineNode::on_cmd_vel_timer()
   }
 
   if (cmd_vel_pub_->is_activated()) {
-    cmd_vel_pub_->publish(out);
+    geometry_msgs::msg::TwistStamped stamped;
+    stamped.header.stamp = this->now();
+    stamped.twist = out;
+    cmd_vel_pub_->publish(stamped);
   }
 }
 

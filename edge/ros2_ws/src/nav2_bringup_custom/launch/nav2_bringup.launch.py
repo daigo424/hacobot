@@ -18,7 +18,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import SetRemap
@@ -78,9 +78,18 @@ def generate_launch_description():
         )
     )
 
+    # nav2_bringupのslam_launch.pyはslam_toolbox付属のautostart機構に頼っているが、
+    # 実測では自動発火しないことが多いため、configure/activateを明示的に呼ぶ
+    # (spawn_robot.launch.pyと同じ回避策。詳細はactivate_slam_toolbox.py参照)
+    activate_slam_toolbox_cmd = ExecuteProcess(
+        cmd=['ros2', 'run', 'nav2_bringup_custom', 'activate_slam_toolbox.py', '/slam_toolbox'],
+        output='screen',
+    )
+
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(nav2_bringup_remapped)
     ld.add_action(safety_bringup_cmd)
+    ld.add_action(activate_slam_toolbox_cmd)
     return ld
