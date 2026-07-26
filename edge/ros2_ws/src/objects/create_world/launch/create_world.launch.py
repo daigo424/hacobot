@@ -5,9 +5,13 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+
+# spawn_robot.launch.py/build_map.launch.pyのDEFAULT_MAP_DIR/DEFAULT_MAP_NAMEと
+# 値を合わせる必要がある(定数重複、共有モジュール化するほどの規模ではないため)。
+DEFAULT_MAP_YAML = '/data/maps/turtlebot3_world.yaml'
 
 
 def generate_launch_description():
@@ -48,8 +52,23 @@ def generate_launch_description():
         output='screen',
     )
 
+    if os.path.exists(DEFAULT_MAP_YAML):
+        map_status_log = LogInfo(
+            msg=f'既存の地図を検出しました({DEFAULT_MAP_YAML})。'
+                'spawn_robot.launch.pyはslam引数が既定(auto)のままなら'
+                'この地図を使うAMCLモードで起動します。'
+        )
+    else:
+        map_status_log = LogInfo(
+            msg=f'地図が見つかりません({DEFAULT_MAP_YAML})。'
+                'spawn_robot.launch.pyはslam引数が既定(auto)のままなら'
+                'SLAMモードで起動します。地図を作りたい場合は'
+                'build_map.launch.pyを使ってください。'
+        )
+
     ld = LaunchDescription()
     ld.add_action(gz_sim)
     ld.add_action(entity_reaper)
     ld.add_action(clock_bridge)
+    ld.add_action(map_status_log)
     return ld

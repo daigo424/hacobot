@@ -191,7 +191,9 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
-        transform_tolerance: 0.1
+        # 0.1だとWSL2の周期的フリーズ(README「既知の制約」)でTF合成が間に合わず
+        # costmapがactivateできない。他のtransform_toleranceと合わせて0.5にする。
+        transform_tolerance: 0.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.5

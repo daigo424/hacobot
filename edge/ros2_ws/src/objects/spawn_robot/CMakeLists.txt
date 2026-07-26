@@ -12,6 +12,7 @@ install(PROGRAMS
   scripts/entity_reaper.py
   scripts/delete_entity_safely.py
   scripts/initial_map_seeder.py
+  scripts/map_saver_trigger.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
