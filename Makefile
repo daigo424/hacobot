@@ -41,7 +41,14 @@ seaweedfs-ui:
 .PHONY: up build test build-test new-launch-pkg rviz
 
 COMPOSE_PJ_NAME    := hacobot
-COMPOSE            := docker compose -f edge/docker/docker-compose.yml -p $(COMPOSE_PJ_NAME)
+# WSL2かネイティブLinuxかでGPUパススルーの構成が別物になる(edge/docker/docker-compose.gpu-*.yml参照)
+# ため、/proc/versionで自動判定してoverrideファイルを差し替える。
+ifneq ($(shell grep -qi microsoft /proc/version 2>/dev/null && echo wsl),)
+GPU_COMPOSE_FILE   := edge/docker/docker-compose.gpu-wsl.yml
+else
+GPU_COMPOSE_FILE   := edge/docker/docker-compose.gpu-native.yml
+endif
+COMPOSE            := docker compose -f edge/docker/docker-compose.yml -f $(GPU_COMPOSE_FILE) -p $(COMPOSE_PJ_NAME)
 RUN                := $(COMPOSE) run --rm --remove-orphans
 EXEC               := $(COMPOSE) exec
 ROS2_SERVICE       := ros2-nav2

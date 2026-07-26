@@ -19,31 +19,14 @@ services:
     # デフォルトのDockerケーパビリティではcap_sys_ptraceが外れておりptrace(2)が失敗するため。
     cap_add:
       - SYS_PTRACE
-    # WSLgのGPUパススルー(/dev/dxg)をコンテナへ渡す。これがないとMesaはGPUドライバ
-    # (d3d12_dri.so。コンテナ側に既に入っている)を見つけられず、camera/LiDARの
-    # レンダリング・レイキャストがCPUソフトウェアラスタライザ(swrast)にフォールバックし、
-    # gzserverのCPU消費が跳ね上がる(実測: 700〜800%)。
-    devices:
-      - /dev/dxg
+    # GPUレンダリングパススルーの実体(nvidia-container-toolkit方式 or WSLg d3d12方式)は
+    # ネイティブ/WSL2で構成が異なるため、Makefileが環境判定して合成する
+    # docker-compose.gpu-native.yml / docker-compose.gpu-wsl.yml 側に分離してある。
     environment:
       - DISPLAY=${DISPLAY}
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
       - PULSE_SERVER=${PULSE_SERVER}
-      - LIBGL_ALWAYS_SOFTWARE=0
-      # libdxcore.so/libd3d12.so(GPUドライバがdlopenする実体)の場所をMesaのd3d12
-      # Galliumドライバに教える。/usr/lib/wsl/lib自体は下のvolumesでマウントする。
-      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
-      # Jazzy化(Ubuntu 24.04 / Mesa 25.x)後、EGLのデバイス列挙が
-      # "Found Num EGL Devices: 1"(softwareのみ)を返しGL_RENDERER=llvmpipeへ
-      # フォールバックする不具合を実機で確認した(/dev/dxg・LD_LIBRARY_PATH等は
-      # 正しく渡っているのに、Mesaがd3d12デバイスを列挙候補にすら含めない)。
-      # GALLIUM_DRIVER/MESA_LOADER_DRIVER_OVERRIDEでd3d12を明示指定すると
-      # GL_RENDERER=D3D12(実GPU名)に切り替わり、gzserverのCPU消費が
-      # 500〜600%台から60〜130%程度まで下がることを確認済み。
-      - GALLIUM_DRIVER=d3d12
-      - MESA_LOADER_DRIVER_OVERRIDE=d3d12
-      - __GLX_VENDOR_LIBRARY_NAME=mesa
     volumes:
       - ../ros2_ws:/workspace
       - ../../testing:/testing
@@ -52,8 +35,6 @@ services:
       # 参照)。build_map.launch.pyが保存する地図もここに置く(/data/maps)。
       - ../../data:/data
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg:rw
-      - /usr/lib/wsl:/usr/lib/wsl:ro
     working_dir: /workspace
 
   # safety層5ノードのPrometheusメトリクス(ポート9101-9105)をスクレイプする。

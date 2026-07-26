@@ -8,15 +8,14 @@ if k3d cluster list "$CLUSTER_NAME" >/dev/null 2>&1; then
     exit 0
 fi
 
-echo "k3dクラスタ '$CLUSTER_NAME' をWSL2上に構築します..."
+echo "k3dクラスタ '$CLUSTER_NAME' を構築します..."
 
 # --port 30092/30093: Kafkaのnodeportリスナー(infra/k8s/kafka/kafka-cluster.yaml)を
 # ホスト側に公開する。ros2_nav2_container(edge/docker/、network_mode: host)から
 # 127.0.0.1:30092経由でKafkaへ到達できるようにするため
 # (ネイティブDocker Engine使用時のみ有効。Docker Desktop使用時は別ネットワーク
 # 名前空間のため到達不可)。
-k3d cluster create "$CLUSTER_NAME" --gpus=all \
-    --volume /usr/lib/wsl/lib:/usr/lib/wsl/lib@server:0 \
+k3d cluster create "$CLUSTER_NAME" \
     --port 30092:30092@server:0 \
     --port 30093:30093@server:0
 
