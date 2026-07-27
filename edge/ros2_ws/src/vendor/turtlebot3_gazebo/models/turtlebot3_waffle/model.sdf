@@ -186,11 +186,15 @@
           </cylinder>
         </geometry>
         <surface>
-          <!-- This friction pamareter don't contain reliable data!! -->
+          <!-- 上流のmu=100000(実質無限摩擦)は、障害物に押し付けられた際に車輪が
+               滑らずロボットが転倒する原因になった(実測: pitch最大43.6度まで振動、
+               転倒中もDiffDriveが車輪回転をそのままオドメトリに積分し地図が破損する)。
+               現実的なゴム対床の摩擦係数(1.0程度)に下げ、スタック時は転倒ではなく
+               スリップするようにする。 -->
           <friction>
             <ode>
-              <mu>100000.0</mu>
-              <mu2>100000.0</mu2>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
               <fdir1>0 0 0</fdir1>
               <slip1>0.0</slip1>
               <slip2>0.0</slip2>
@@ -248,11 +252,15 @@
           </cylinder>
         </geometry>
         <surface>
-          <!-- This friction pamareter don't contain reliable data!! -->
+          <!-- 上流のmu=100000(実質無限摩擦)は、障害物に押し付けられた際に車輪が
+               滑らずロボットが転倒する原因になった(実測: pitch最大43.6度まで振動、
+               転倒中もDiffDriveが車輪回転をそのままオドメトリに積分し地図が破損する)。
+               現実的なゴム対床の摩擦係数(1.0程度)に下げ、スタック時は転倒ではなく
+               スリップするようにする。 -->
           <friction>
             <ode>
-              <mu>100000.0</mu>
-              <mu2>100000.0</mu2>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
               <fdir1>0 0 0</fdir1>
               <slip1>0.0</slip1>
               <slip2>0.0</slip2>

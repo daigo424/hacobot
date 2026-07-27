@@ -19,7 +19,10 @@ import rclpy
 from rclpy.node import Node
 
 ENTITY_PATTERN = re.compile(r'^tb3_.+$')
-CHECK_PERIOD_SEC = 5.0
+# gz model --listはサブプロセスとしてgz-transportに新規参加するため、呼ぶたびに
+# 既存の参加者(gzserver本体含む)を巻き込んだディスカバリ処理でシミュレーションが
+# 一瞬(実測でreal_time_factorが1%程度まで)止まる。頻度を下げて影響を減らす。
+CHECK_PERIOD_SEC = 30.0
 # spawn直後の一瞬(エンティティはあるがノードがまだ上がっていない)を誤って
 # 削除しないよう、この回数連続で不在が続いたときだけ削除する
 MISSING_THRESHOLD = 2

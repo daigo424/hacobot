@@ -27,6 +27,11 @@ class InitialMapSeeder(Node):
         # それを基準にすると次のタイマー周期で経過時間が一気に跳ね上がってしまうため、
         # 基準時刻は最初のタイマー発火時に確定させる
         self._start_time = None
+        # world_supervisor.pyがgzserverクラッシュ時に世界を再起動するとsim timeが0から
+        # 巻き戻り、_start_time基準の経過時間計算が負になって永久にSEED_DURATION_SECへ
+        # 到達しなくなる(実際に発生し、cmd_vel_nav2を出し続けてNav2と競合し続けた)。
+        # クロックの巻き戻りに影響されないtick数ベースでも経過時間を追跡する。
+        self._tick_count = 0
         self._timer = self.create_timer(PUBLISH_PERIOD_SEC, self._on_timer)
 
     def _publish_status_marker(self, active):
@@ -57,8 +62,10 @@ class InitialMapSeeder(Node):
             self._start_time = now
             return
 
+        self._tick_count += 1
         elapsed_sec = (now - self._start_time).nanoseconds / 1e9
-        if elapsed_sec >= SEED_DURATION_SEC:
+        tick_elapsed_sec = self._tick_count * PUBLISH_PERIOD_SEC
+        if elapsed_sec >= SEED_DURATION_SEC or tick_elapsed_sec >= SEED_DURATION_SEC:
             self._pub.publish(TwistStamped())
             self._publish_status_marker(active=False)
             self.get_logger().info('初期地図の自動生成を終了しました')
