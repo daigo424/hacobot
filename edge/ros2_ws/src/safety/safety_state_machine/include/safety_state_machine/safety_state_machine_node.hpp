@@ -1,6 +1,7 @@
 #ifndef SAFETY_STATE_MACHINE__SAFETY_STATE_MACHINE_NODE_HPP_
 #define SAFETY_STATE_MACHINE__SAFETY_STATE_MACHINE_NODE_HPP_
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -67,11 +68,15 @@ private:
   double degraded_speed_scale_;
   int64_t cmd_vel_period_ms_;
   int64_t metrics_port_;
+  int64_t nav2_cmd_vel_freshness_ms_;
 
   SafetyState safety_state_;
   // Nav2 Jazzyはvelocity_smoother/controller_serverのenable_stamped_cmd_velが
   // デフォルトtrueでTwistStampedを出すため、中継元もTwistStampedで受ける
   geometry_msgs::msg::Twist latest_nav2_cmd_vel_;
+  // latest_nav2_cmd_vel_を最後に受信した時刻(steady_clock、use_sim_timeの影響を受けない)。
+  // SAFE_STOP中の中継可否判定で、cmd_vel_nav2が直近に更新され続けているかの判定に使う。
+  std::optional<std::chrono::steady_clock::time_point> last_nav2_cmd_vel_time_;
   // watchdogの/safety/sensors_okをそのまま反映(センサー由来のSAFE_STOP中でも、
   // センサー自体が生きていればcmd_vel_nav2を中継してよいかの判定に使う)。
   // watchdogからの通知が届くまでは安全側に倒してfalse(未健全)扱いとする。

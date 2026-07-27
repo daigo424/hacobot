@@ -221,6 +221,55 @@ TEST_F(SafetyStateMachineTest, CmdVelRelayedDuringSafeStopWhenSensorsHealthy)
   EXPECT_DOUBLE_EQ(last_cmd_vel_.linear.x, 0.8);
 }
 
+TEST_F(SafetyStateMachineTest, CmdVelGoesZeroInSafeStopWhenNav2StopsPublishing)
+{
+  publish_sensors_ok(true);
+  spin_for(60ms);
+
+  publish_anomaly("nav2", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  publish_anomaly("comm_bridge", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
+
+  geometry_msgs::msg::TwistStamped nav2_cmd;
+  nav2_cmd.twist.angular.z = 0.5;
+  nav2_cmd_vel_pub_->publish(nav2_cmd);
+  spin_for(60ms);
+  // 直近に受信した間は(センサー健全・非E-Stopなので)中継される
+  EXPECT_DOUBLE_EQ(last_cmd_vel_.angular.z, 0.5);
+
+  // Nav2自体が死んでpublishが止まった状況を模して、以降は一切publishしない
+  spin_for(400ms);  // nav2_cmd_vel_freshness_ms_(既定300ms)を超えるまで待つ
+  // 古い指令を凍結したまま流し続けず、ゼロにフォールバックするはず
+  EXPECT_DOUBLE_EQ(last_cmd_vel_.angular.z, 0.0);
+}
+
+TEST_F(SafetyStateMachineTest, CmdVelNeverRelayedDuringManualRecovery)
+{
+  publish_sensors_ok(true);
+  spin_for(60ms);
+
+  publish_anomaly("nav2", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  publish_anomaly("comm_bridge", safety_msgs::msg::AnomalyEvent::WARNING);
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::SAFE_STOP);
+
+  recovery_pub_->publish(std_msgs::msg::Empty());
+  spin_for(80ms);
+  ASSERT_EQ(node_->current_state(), SafetyState::MANUAL_RECOVERY);
+
+  geometry_msgs::msg::TwistStamped nav2_cmd;
+  nav2_cmd.twist.linear.x = 0.8;
+  nav2_cmd_vel_pub_->publish(nav2_cmd);
+  spin_for(60ms);
+
+  // 2段階復旧中(MANUAL_RECOVERY)は、センサーが健全でも1回の復旧コマンドだけで
+  // 自律走行が再開してはならないため、常にゼロのはず
+  EXPECT_DOUBLE_EQ(last_cmd_vel_.linear.x, 0.0);
+}
+
 TEST_F(SafetyStateMachineTest, EstopLatchBlocksCmdVelEvenWhenSensorsHealthy)
 {
   publish_sensors_ok(true);

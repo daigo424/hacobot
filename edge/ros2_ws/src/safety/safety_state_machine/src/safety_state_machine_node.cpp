@@ -37,6 +37,7 @@ SafetyStateMachineNode::SafetyStateMachineNode(const rclcpp::NodeOptions & optio
   degraded_speed_scale_(0.5),
   cmd_vel_period_ms_(50),
   metrics_port_(9102),
+  nav2_cmd_vel_freshness_ms_(300),
   safety_state_(SafetyState::NORMAL),
   sensors_healthy_(false),
   estop_latched_(false)
@@ -45,6 +46,7 @@ SafetyStateMachineNode::SafetyStateMachineNode(const rclcpp::NodeOptions & optio
   this->declare_parameter<double>("degraded_speed_scale", 0.5);
   this->declare_parameter<int64_t>("cmd_vel_period_ms", 50);
   this->declare_parameter<int64_t>("metrics_port", 9102);
+  this->declare_parameter<int64_t>("nav2_cmd_vel_freshness_ms", 300);
 }
 
 SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_configure(
@@ -54,10 +56,12 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_configure(
   degraded_speed_scale_ = this->get_parameter("degraded_speed_scale").as_double();
   cmd_vel_period_ms_ = this->get_parameter("cmd_vel_period_ms").as_int();
   metrics_port_ = this->get_parameter("metrics_port").as_int();
+  nav2_cmd_vel_freshness_ms_ = this->get_parameter("nav2_cmd_vel_freshness_ms").as_int();
   metrics_.start(static_cast<int>(metrics_port_));
 
   safety_state_ = SafetyState::NORMAL;
   latest_nav2_cmd_vel_ = geometry_msgs::msg::Twist();
+  last_nav2_cmd_vel_time_.reset();
 
   cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
     "/cmd_vel", rclcpp::QoS(10));
@@ -108,6 +112,7 @@ SafetyStateMachineNode::CallbackReturn SafetyStateMachineNode::on_activate(
   // watchdogからの通知を受け取るまでは安全側(未健全)扱いにする
   sensors_healthy_ = false;
   estop_latched_ = false;
+  last_nav2_cmd_vel_time_.reset();
   std_msgs::msg::String state_msg;
   state_msg.data = to_string(safety_state_);
   state_pub_->publish(state_msg);
@@ -221,6 +226,7 @@ void SafetyStateMachineNode::on_recovery_command(
 void SafetyStateMachineNode::on_nav2_cmd_vel(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
   latest_nav2_cmd_vel_ = msg->twist;
+  last_nav2_cmd_vel_time_ = std::chrono::steady_clock::now();
 }
 
 void SafetyStateMachineNode::on_sensors_ok(const std_msgs::msg::Bool::SharedPtr msg)
@@ -244,14 +250,21 @@ void SafetyStateMachineNode::on_cmd_vel_timer()
       out.angular.y = latest_nav2_cmd_vel_.angular.y * degraded_speed_scale_;
       out.angular.z = latest_nav2_cmd_vel_.angular.z * degraded_speed_scale_;
       break;
-    case SafetyState::SAFE_STOP:
-    case SafetyState::MANUAL_RECOVERY:
-      // センサーが健全(sensors_healthy_)で、かつリモートE-Stop由来のロック
-      // (estop_latched_)でなければ、RVizのNav2 Goal含むNav2の指令をそのまま中継する。
-      // それ以外はoutをデフォルト構築のゼロ値のままにする(全速度成分0.0)。
-      if (sensors_healthy_ && !estop_latched_) {
+    case SafetyState::SAFE_STOP: {
+      // センサーが健全・非E-Stop・かつcmd_vel_nav2が直近に更新されている場合のみ
+      // 中継する(通路を塞がないようスタッフが移動させられるようにする業務要件)。
+      // Nav2がcmd_velを出さなくなれば(プロセス終了・無応答等)自動的にゼロになる。
+      bool nav2_cmd_fresh = last_nav2_cmd_vel_time_.has_value() &&
+        (std::chrono::steady_clock::now() - *last_nav2_cmd_vel_time_) <
+        std::chrono::milliseconds(nav2_cmd_vel_freshness_ms_);
+      if (sensors_healthy_ && !estop_latched_ && nav2_cmd_fresh) {
         out = latest_nav2_cmd_vel_;
       }
+      break;
+    }
+    case SafetyState::MANUAL_RECOVERY:
+      // 2段階復旧(SAFE_STOP->MANUAL_RECOVERY->NORMAL)の「1回の復旧コマンドで
+      // 自律走行が再開しない」という設計を守るため、常にゼロにする。
       break;
   }
 
