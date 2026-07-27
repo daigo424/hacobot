@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>status_overlay</name>
+  <version>0.1.0</version>
+  <description>
+    safety_state_machine/watchdog/stall_recoveryの状態をRVizのDisplaysパネルに
+    色分けテキスト(rviz_2d_overlay_msgs/OverlayText)として表示するための可視化専用ノード。
+    制御ロジックには一切関与しない。
+  </description>
+  <maintainer email="noreply@example.com">hacobot</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>rviz_2d_overlay_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
