@@ -17,8 +17,8 @@ def make_overlay(text):
     msg.text = text
     msg.width = 400
     msg.height = 40
-    msg.horizontal_distance = 10
-    msg.vertical_distance = 10
+    msg.horizontal_distance = 0
+    msg.vertical_distance = 0
     msg.horizontal_alignment = OverlayText.LEFT
     msg.vertical_alignment = OverlayText.TOP
     msg.line_width = 2

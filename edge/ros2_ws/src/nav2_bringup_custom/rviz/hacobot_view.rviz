@@ -535,6 +535,32 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /tb3_01/mapping_status
       Value: true
+    - Background Alpha: 0.6
+      Background Color: 0; 0; 0
+      Class: rviz_2d_overlay_plugins/TextOverlay
+      Enabled: true
+      Foreground Alpha: 1
+      Foreground Color: 255; 255; 255
+      Name: SafetyState
+      Overtake BG Color Properties: true
+      Overtake FG Color Properties: true
+      Overtake Position Properties: false
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tb3_01/safety/state_overlay
+      Value: true
+      font: DejaVu Sans Mono
+      height: 40
+      hor_alignment: left
+      hor_dist: 0
+      line width: 2
+      text size: 10
+      ver_alignment: top
+      ver_dist: 0
+      width: 400
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

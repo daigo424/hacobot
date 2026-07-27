@@ -1,9 +1,17 @@
 {
     "python.analysis.extraPaths": [
-        "/opt/ros/jazzy/lib/python3.12/site-packages"
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/rviz_2d_overlay_msgs/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/rviz_2d_overlay_plugins/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/explore_lite/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/explore_lite_msgs/lib/python3.12/site-packages"
     ],
     "python.autoComplete.extraPaths": [
-        "/opt/ros/jazzy/lib/python3.12/site-packages"
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/rviz_2d_overlay_msgs/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/rviz_2d_overlay_plugins/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/explore_lite/lib/python3.12/site-packages",
+        "${workspaceFolder}/install/explore_lite_msgs/lib/python3.12/site-packages"
     ],
     "coverage-gutters.coverageBaseDir": "coverage"
 }
