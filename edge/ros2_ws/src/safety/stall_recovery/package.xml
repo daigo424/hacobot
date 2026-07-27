@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>stall_recovery</name>
+  <version>0.1.0</version>
+  <description>
+    hacobot フェイルセーフ層: 壁等への接触でホイールが空転しオドメトリだけが暴走する
+    (map生成中に地図が壊れる)状態を、オドメトリに依存しないLiDAR生スキャンの類似度で
+    検知し、自動で後退させてから探索へ制御を戻すC++ lifecycle node
+  </description>
+  <maintainer email="noreply@example.com">hacobot</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>safety_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>slam_toolbox</depend>
+  <depend>safety_metrics</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

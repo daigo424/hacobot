@@ -48,6 +48,13 @@ def launch_setup(context, *args, **kwargs):
     x_pose_val = context.perform_substitution(x_pose)
     y_pose_val = context.perform_substitution(y_pose)
 
+    # x_pose/y_poseはGazebo世界座標(スポーン位置)。slam_toolboxはSLAM開始時の
+    # ロボットの実世界位置をmapフレームの(0,0,0)と定義するため、両者は別の座標系であり、
+    # 一般には値が一致しない(build_map.launch.pyの既定スポーン地点(-2.0, -0.5)がmapフレーム
+    # では(0, 0)になる、という関係)。AMCLへの初期位置はmapフレーム側の値を別途指定する。
+    initial_pose_x_val = context.perform_substitution(LaunchConfiguration('initial_pose_x'))
+    initial_pose_y_val = context.perform_substitution(LaunchConfiguration('initial_pose_y'))
+
     # build_map.launch.pyは地図生成のため常にslam:='true'を渡す(auto判定を素通りする)。
     slam_arg = context.perform_substitution(LaunchConfiguration('slam'))
     default_map_yaml = os.path.join(DEFAULT_MAP_DIR, f'{DEFAULT_MAP_NAME}.yaml')
@@ -130,11 +137,17 @@ def launch_setup(context, *args, **kwargs):
     )
     if not use_slam:
         # AMCLは initial_pose未設定だと(RVizで手動指定しない限り)自己位置推定が収束せず
-        # 動けないため、スポーン座標をそのまま初期位置として渡す(yawは未指定のため0.0固定)。
-        nav2_params_file = build_amcl_params_yaml(nav2_params_file, x_pose_val, y_pose_val)
+        # 動けないため、mapフレームでの初期位置を明示的に渡す(yawは未指定のため0.0固定)。
+        # x_pose/y_pose(Gazebo世界座標)をそのまま使わないこと
+        # (mapフレームの原点とGazebo世界座標の原点は一般に一致しない)。
+        nav2_params_file = build_amcl_params_yaml(
+            nav2_params_file, initial_pose_x_val, initial_pose_y_val)
+    else:
+        nav2_params_file = build_slam_costmap_overrides_yaml(nav2_params_file)
     nav2_cmd = GroupAction([
-        # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2"に付け替える(safety_state_machineが中継する)
-        SetRemap(src='cmd_vel', dst='cmd_vel_nav2'),
+        # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2_raw"に付け替える。stall_recoveryが
+        # これを中継してcmd_vel_nav2へ流す(壁スタック時のみ後退指令に差し替えるため)。
+        SetRemap(src='cmd_vel', dst='cmd_vel_nav2_raw'),
         # nav2_params.yaml内の絶対パス/scan(costmap各層・slam_toolbox等、計6箇所)を相対化
         SetRemap(src='/scan', dst='scan'),
         # bringup_launch.pyはnav2_containerにだけ/tf remapを渡していて、内部でincludeする
@@ -199,11 +212,18 @@ def launch_setup(context, *args, **kwargs):
         SetRemap(src='/safety/heartbeat/comm_bridge', dst='safety/heartbeat/comm_bridge'),
         SetRemap(src='/safety/state', dst='safety/state'),
         SetRemap(src='/safety/sensors_ok', dst='safety/sensors_ok'),
+        SetRemap(src='/safety/stall_recovery_mode', dst='safety/stall_recovery_mode'),
+        SetRemap(src='/cmd_vel_nav2_raw', dst='cmd_vel_nav2_raw'),
         SetRemap(src='/cmd_vel_nav2', dst='cmd_vel_nav2'),
         SetRemap(src='/cmd_vel', dst='cmd_vel'),
         robot_state_publisher,
         gz_bridge,
         safety_cmd,
+        Node(
+            package='status_overlay',
+            executable='status_overlay_node.py',
+            output='screen',
+        ),
         *initial_map_seeder_actions,
     ])
 
@@ -319,21 +339,47 @@ def build_bridge_yaml(model_folder, robot_id_str):
     return bridge_tmp
 
 
-def build_amcl_params_yaml(nav2_params_path, x_pose, y_pose):
-    """AMCLの初期位置(initial_pose)にスポーン座標を注入したnav2_params.yamlを作る。
+def build_amcl_params_yaml(nav2_params_path, initial_pose_x, initial_pose_y):
+    """AMCLの初期位置(initial_pose)を注入したnav2_params.yamlを作る。
 
     RVizで「2D Pose Estimate」を手動指定しない限りAMCLは自己位置推定を開始しないため、
-    スポーン時点で既に分かっている座標をそのまま初期位置として与える。
+    起動時点で分かっているmapフレーム上の位置を初期位置として与える。
+    引数はmapフレームでの座標であり、Gazebo世界座標(spawn_robot.launch.pyのx_pose/y_pose)
+    とは別の座標系(両者の原点は一般に一致しない)。
     """
     with open(nav2_params_path, 'r') as f:
         params = yaml.safe_load(f)
 
     amcl_params = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
     amcl_params['set_initial_pose'] = True
-    amcl_params['initial_pose.x'] = float(x_pose)
-    amcl_params['initial_pose.y'] = float(y_pose)
+    amcl_params['initial_pose.x'] = float(initial_pose_x)
+    amcl_params['initial_pose.y'] = float(initial_pose_y)
     amcl_params['initial_pose.z'] = 0.0
     amcl_params['initial_pose.yaw'] = 0.0
+
+    params_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    yaml.safe_dump(params, params_tmp)
+    params_tmp.close()
+
+    return params_tmp.name
+
+
+def build_slam_costmap_overrides_yaml(nav2_params_path):
+    """SLAMでの地図構築中だけ、local_costmapに障害物との安全マージンを広げた値を適用する。
+
+    地図がまだ無い探索中は障害物の見え方の誤差やオドメトリのずれの影響を受けやすいため、
+    確立済みの地図に対して走行するAMCLナビゲーション時より余裕を持たせる
+    (機体の物理半径に合わせたrobot_radius、コスト勾配を広げるinflation_radius、
+    勾配を緩やかにするcost_scaling_factor)。
+    """
+    with open(nav2_params_path, 'r') as f:
+        params = yaml.safe_load(f)
+
+    local_costmap_params = params['local_costmap']['local_costmap']['ros__parameters']
+    local_costmap_params['robot_radius'] = 0.26
+    local_costmap_params['publish_frequency'] = 5.0
+    local_costmap_params['inflation_layer']['inflation_radius'] = 0.45
+    local_costmap_params['inflation_layer']['cost_scaling_factor'] = 3.0
 
     params_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
     yaml.safe_dump(params, params_tmp)
@@ -350,6 +396,11 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument('x_pose', default_value='-2.0'))
     ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
     ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
+    # AMCLモード時のみ使用。mapフレームでの初期位置(x_pose/y_poseとは別の座標系、
+    # 詳細はlaunch_setup()内のコメント参照)。既定値の0.0/0.0は、x_pose/y_poseの
+    # 既定値(-2.0, -0.5、build_map.launch.pyのSLAM開始座標と同一)に対応するmap原点。
+    ld.add_action(DeclareLaunchArgument('initial_pose_x', default_value='0.0'))
+    ld.add_action(DeclareLaunchArgument('initial_pose_y', default_value='0.0'))
     ld.add_action(DeclareLaunchArgument('auto_seed_map', default_value='true'))
     ld.add_action(DeclareLaunchArgument(
         'watchdog_timeout_ms', default_value='500',

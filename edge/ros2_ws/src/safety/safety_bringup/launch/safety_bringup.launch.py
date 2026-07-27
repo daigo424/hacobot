@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""hacobot フェイルセーフ層5ノードを一括起動する。
+"""hacobot フェイルセーフ層6ノードを一括起動する。
 
 heartbeat_monitor, safety_state_machine, watchdog, nav2_heartbeat_adapter,
-estop_bridgeをlifecycle nodeとして起動し、nav2_lifecycle_manager
+estop_bridge, stall_recoveryをlifecycle nodeとして起動し、nav2_lifecycle_manager
 (Nav2専用ではなく任意のlifecycle nodeを管理できる汎用パッケージ。nav2_bringup自身が
 slam_launch.py/navigation_launch.pyで使っているのと同じ仕組みを流用)で
 自動的にconfigure→activateまで遷移させる。
@@ -23,6 +23,7 @@ LIFECYCLE_NODE_NAMES = [
     'watchdog',
     'nav2_heartbeat_adapter',
     'estop_bridge',
+    'stall_recovery',
 ]
 
 
@@ -84,6 +85,14 @@ def generate_launch_description():
         }],
     )
 
+    stall_recovery_cmd = LifecycleNode(
+        package='stall_recovery',
+        executable='stall_recovery_node',
+        name='stall_recovery',
+        namespace='',
+        output='screen',
+    )
+
     lifecycle_manager_cmd = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -113,5 +122,6 @@ def generate_launch_description():
     ld.add_action(watchdog_cmd)
     ld.add_action(nav2_heartbeat_adapter_cmd)
     ld.add_action(estop_bridge_cmd)
+    ld.add_action(stall_recovery_cmd)
     ld.add_action(lifecycle_manager_cmd)
     return ld
