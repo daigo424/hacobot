@@ -12,7 +12,10 @@ slam_launch.py/navigation_launch.pyで使っているのと同じ仕組みを流
 これらのノードは use_sim_time を設定せず、常に実時間(wall clock)で動作させる。
 """
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LifecycleNode, Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 LIFECYCLE_NODE_NAMES = [
     'heartbeat_monitor',
@@ -46,6 +49,9 @@ def generate_launch_description():
         name='watchdog',
         namespace='',
         output='screen',
+        parameters=[{
+            'timeout_ms': ParameterValue(LaunchConfiguration('watchdog_timeout_ms'), value_type=int),
+        }],
     )
 
     nav2_heartbeat_adapter_cmd = LifecycleNode(
@@ -93,6 +99,15 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
+    ld.add_action(DeclareLaunchArgument(
+        'watchdog_timeout_ms', default_value='500',
+        description=(
+            'センサーWatchdog(Task 3-3)の途絶判定しきい値[ms]。実機の応答性要件をそのまま'
+            '反映した既定値(500)は変更しないこと。build_map.launch.py配下ではGazeboの'
+            'レンダリング負荷でカメラ/LiDARのpublish間隔が一時的に500msを超えやすく、'
+            'SAFE_STOPに固定されて探査が進まなくなるため、そちらだけ緩めた値を渡す。'
+        ),
+    ))
     ld.add_action(heartbeat_monitor_cmd)
     ld.add_action(safety_state_machine_cmd)
     ld.add_action(watchdog_cmd)

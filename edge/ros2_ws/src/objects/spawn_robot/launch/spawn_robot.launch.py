@@ -4,6 +4,10 @@
 各ロボットは専用の/tb3_0N/tf・独立したNav2/SLAMを持つ(nav2_bringupのnamespace機構を使用)。
 そのためRVizで複数ロボットを1つのFixed Frameに同時表示することはできない
 (ロボットごとに別のmapフレームを持つため、共通の親フレームが無い)。
+
+slam引数でSLAM(地図を作りながら走る)/AMCL(既存の地図を頼りに自己位置推定する)を
+切り替えられる。既定の'auto'では、build_map.launch.pyが保存した地図
+(DEFAULT_MAP_DIR/DEFAULT_MAP_NAME.yaml)の有無で自動判定する。
 """
 import colorsys
 import hashlib
@@ -28,6 +32,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
 
+# build_map.launch.pyが保存する地図の置き場所。docker-compose.ymlの/dataマウントと
+# create_world.launch.pyのDEFAULT_MAP_YAMLに値を合わせる必要がある。
+DEFAULT_MAP_DIR = '/data/maps'
+DEFAULT_MAP_NAME = 'turtlebot3_world'
+
+
 def launch_setup(context, *args, **kwargs):
     robot_id_str = context.perform_substitution(LaunchConfiguration('robot_id'))
     ns = f"tb3_{robot_id_str}"
@@ -35,6 +45,24 @@ def launch_setup(context, *args, **kwargs):
     x_pose = LaunchConfiguration('x_pose')
     y_pose = LaunchConfiguration('y_pose')
     z_pose = LaunchConfiguration('z_pose')
+    x_pose_val = context.perform_substitution(x_pose)
+    y_pose_val = context.perform_substitution(y_pose)
+
+    # build_map.launch.pyは地図生成のため常にslam:='true'を渡す(auto判定を素通りする)。
+    slam_arg = context.perform_substitution(LaunchConfiguration('slam'))
+    default_map_yaml = os.path.join(DEFAULT_MAP_DIR, f'{DEFAULT_MAP_NAME}.yaml')
+    if slam_arg == 'auto':
+        use_slam = not os.path.exists(default_map_yaml)
+    else:
+        use_slam = slam_arg.lower() == 'true'
+
+    if use_slam:
+        nav2_mode_args = {'slam': 'True', 'map': ''}
+    else:
+        map_yaml_arg = context.perform_substitution(LaunchConfiguration('map_yaml'))
+        resolved_map_yaml = map_yaml_arg if map_yaml_arg else default_map_yaml
+        # slam:=Trueと同様、内部でPythonのeval()条件分岐に使われるため'False'(先頭大文字)必須
+        nav2_mode_args = {'slam': 'False', 'map': resolved_map_yaml}
 
     model_folder = 'turtlebot3_' + os.environ.get('TURTLEBOT3_MODEL', 'waffle')
 
@@ -100,6 +128,10 @@ def launch_setup(context, *args, **kwargs):
     nav2_params_file = os.path.join(
         get_package_share_directory('nav2_bringup_custom'), 'params', 'nav2_params.yaml'
     )
+    if not use_slam:
+        # AMCLは initial_pose未設定だと(RVizで手動指定しない限り)自己位置推定が収束せず
+        # 動けないため、スポーン座標をそのまま初期位置として渡す(yawは未指定のため0.0固定)。
+        nav2_params_file = build_amcl_params_yaml(nav2_params_file, x_pose_val, y_pose_val)
     nav2_cmd = GroupAction([
         # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2"に付け替える(safety_state_machineが中継する)
         SetRemap(src='cmd_vel', dst='cmd_vel_nav2'),
@@ -120,13 +152,10 @@ def launch_setup(context, *args, **kwargs):
             launch_arguments={
                 'namespace': ns,
                 'use_namespace': 'true',
-                # 内部でPythonのeval()条件分岐に使われるため'True'(先頭大文字)が必須
-                'slam': 'True',
-                # slam:=Trueでは未使用だが、デフォルト値の無い必須引数なので空文字を渡す
-                'map': '',
                 'use_sim_time': 'true',
                 'params_file': nav2_params_file,
                 'autostart': 'true',
+                **nav2_mode_args,
             }.items(),
         ),
     ])
@@ -136,20 +165,23 @@ def launch_setup(context, *args, **kwargs):
     safety_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(safety_bringup_dir, 'launch', 'safety_bringup.launch.py')
-        )
+        ),
+        launch_arguments={
+            'watchdog_timeout_ms': LaunchConfiguration('watchdog_timeout_ms'),
+        }.items(),
     )
 
-    # 地図が空(0x0)だとNav2は経路計画できず、経路が無いとロボットは動けず、動けないと
-    # slam_toolboxの地図も育たない、というデッドロックがあるため、スポーン直後の一定時間だけ
-    # 自動でロボットを動かして初期地図を育てる。cmd_vel_nav2経由なのでsafety_state_machineの
-    # 制御(センサー異常時は止まる)は通常通り効く。
-    initial_map_seeder_cmd = Node(
-        package='spawn_robot',
-        executable='initial_map_seeder.py',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
-        condition=IfCondition(LaunchConfiguration('auto_seed_map')),
-    )
+    # 地図が空だとNav2が経路計画できずロボットも動けず、slam_toolboxの地図も育たない
+    # デッドロックがあるため直後だけ自動走行させる(AMCLでは自己位置推定が乱れるためSLAM限定)。
+    initial_map_seeder_actions = []
+    if use_slam:
+        initial_map_seeder_actions = [Node(
+            package='spawn_robot',
+            executable='initial_map_seeder.py',
+            output='screen',
+            parameters=[{'use_sim_time': True}],
+            condition=IfCondition(LaunchConfiguration('auto_seed_map')),
+        )]
 
     # フェイルセーフ層5ノードは/safety/*・/cmd_vel等を絶対パスで決め打ちしているため、
     # PushRosNamespaceの前にSetRemapで相対化する(/scan等はwatchdog/adapterが見るため)。
@@ -172,16 +204,17 @@ def launch_setup(context, *args, **kwargs):
         robot_state_publisher,
         gz_bridge,
         safety_cmd,
-        initial_map_seeder_cmd,
+        *initial_map_seeder_actions,
     ])
 
-    # nav2_bringupのslam_launch.pyはslam_toolbox付属のautostart機構に頼っているが、
-    # 実測では自動発火しないことが多いため、configure/activateを明示的に呼ぶ
-    # (activate_slam_toolbox.py内で対象ノードが上がるまでリトライする)
-    activate_slam_toolbox_cmd = ExecuteProcess(
-        cmd=['ros2', 'run', 'nav2_bringup_custom', 'activate_slam_toolbox.py', f'/{ns}/slam_toolbox'],
-        output='screen',
-    )
+    # slam_toolbox付属のautostart機構は信頼できないため、configure/activateを明示的に呼ぶ
+    # (activate_slam_toolbox.py内でリトライするため呼び出し側は待たなくてよい)。AMCLでは不要。
+    activate_slam_toolbox_actions = []
+    if use_slam:
+        activate_slam_toolbox_actions = [ExecuteProcess(
+            cmd=['ros2', 'run', 'nav2_bringup_custom', 'activate_slam_toolbox.py', f'/{ns}/slam_toolbox'],
+            output='screen',
+        )]
 
     # 前回異常終了で同名エンティティが残っていると"already exists"で失敗するため、
     # スポーン前にベストエフォートで削除してからspawnする。
@@ -214,7 +247,7 @@ def launch_setup(context, *args, **kwargs):
         robot_group,
         nav2_cmd,
         image_bridge,
-        activate_slam_toolbox_cmd,
+        *activate_slam_toolbox_actions,
         delete_existing_cmd,
         spawn_after_cleanup,
         clean_up_action,
@@ -286,6 +319,29 @@ def build_bridge_yaml(model_folder, robot_id_str):
     return bridge_tmp
 
 
+def build_amcl_params_yaml(nav2_params_path, x_pose, y_pose):
+    """AMCLの初期位置(initial_pose)にスポーン座標を注入したnav2_params.yamlを作る。
+
+    RVizで「2D Pose Estimate」を手動指定しない限りAMCLは自己位置推定を開始しないため、
+    スポーン時点で既に分かっている座標をそのまま初期位置として与える。
+    """
+    with open(nav2_params_path, 'r') as f:
+        params = yaml.safe_load(f)
+
+    amcl_params = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
+    amcl_params['set_initial_pose'] = True
+    amcl_params['initial_pose.x'] = float(x_pose)
+    amcl_params['initial_pose.y'] = float(y_pose)
+    amcl_params['initial_pose.z'] = 0.0
+    amcl_params['initial_pose.yaw'] = 0.0
+
+    params_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    yaml.safe_dump(params, params_tmp)
+    params_tmp.close()
+
+    return params_tmp.name
+
+
 def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(DeclareLaunchArgument('robot_id', default_value='01'))
@@ -295,6 +351,26 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
     ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
     ld.add_action(DeclareLaunchArgument('auto_seed_map', default_value='true'))
+    ld.add_action(DeclareLaunchArgument(
+        'watchdog_timeout_ms', default_value='500',
+        description='safety_bringup.launch.pyのwatchdog_timeout_msへそのまま渡す(既定は実機想定の500)',
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'slam', default_value='auto',
+        description=(
+            "'true'/'false'/'auto'。'auto'(既定)は" + DEFAULT_MAP_DIR + '/'
+            + DEFAULT_MAP_NAME + '.yaml の有無で自動判定'
+            '(無ければSLAMモード、あればAMCLモード)。build_map.launch.pyは'
+            "地図生成のため常に'true'を渡す。"
+        ),
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'map_yaml', default_value='',
+        description=(
+            "AMCLモード(slam:=false)で読み込む地図のyamlパス。空文字なら既定の"
+            + DEFAULT_MAP_DIR + '/' + DEFAULT_MAP_NAME + '.yaml を使う。'
+        ),
+    ))
 
     ld.add_action(OpaqueFunction(function=launch_setup))
     return ld

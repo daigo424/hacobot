@@ -23,10 +23,24 @@
       "cwd": "${workspaceFolder}"
     },
     {
-      "name": "ROS2: Spawn Robot",
+      "name": "ROS2: Spawn Robot (auto: SLAM if no map, else AMCL)",
       "type": "node-terminal",
       "request": "launch",
       "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot spawn_robot.launch.py robot_id:=${input:spawnId} x_pose:=${input:xPose} y_pose:=${input:yPose}",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ROS2: Build Map (SLAM + explore_lite, auto-save)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot build_map.launch.py",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ROS2: Spawn Robot (force AMCL)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch spawn_robot spawn_robot.launch.py robot_id:=${input:spawnId} x_pose:=${input:xPose} y_pose:=${input:yPose} slam:=false",
       "cwd": "${workspaceFolder}"
     },
     {

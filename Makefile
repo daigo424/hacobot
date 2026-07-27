@@ -117,3 +117,5 @@ colcon-build-test: colcon-build colcon-test
 
 topic-list:
 	$(MAKE) colcon CMD_RUN="ros2 topic list"
+tf2-tools-view-frames:
+	$(MAKE) colcon CMD_RUN="ros2 run tf2_tools view_frames --ros-args --remap /tf:=/tb3_builder/tf --remap /tf_static:=/tb3_builder/tf_static"

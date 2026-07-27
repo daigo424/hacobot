@@ -38,6 +38,10 @@ data/*
 runs/*
 docs/**/*.bkp
 
+# edge/ros2_ws/ で作ったドキュメントファイルは全てスルー
+edge/ros2_ws/**/*.pdf
+edge/ros2_ws/**/*.gv
+
 # 耐久試験・カオス実験の実行結果(生成物。実行の都度ローカルで生成される)
 testing/soak_test/reports/*
 !testing/soak_test/reports/.gitkeep
