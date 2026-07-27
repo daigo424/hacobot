@@ -30,6 +30,10 @@ edge/ros2_ws/coverage/
 
 *.swp
 
+# Gazebo GUI等のクラッシュ時にOSが吐くコアダンプ(core_pattern依存でcwd直下に落ちる)
+core
+core.*
+
 tmp/
 
 .env
