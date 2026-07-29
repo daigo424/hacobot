@@ -40,7 +40,7 @@ bash demos/run_all.sh 1 2 3
 ## ネイティブDocker Engine vs Docker Desktop
 
 `07`(および`05`の「ロボット側への波及」確認部分)は**ネイティブDocker Engine**
-(WSL2に直接`docker-ce`を入れたもの)でのみ成立する。Docker Desktopを使っている場合、
+(`docker-ce`。Linuxホストに直接入れたもの、WSL2上でも可)でのみ成立する。Docker Desktopを使っている場合、
 `ros2_nav2_container`(`network_mode: host`)はDocker Desktop VM側のネットワーク
 名前空間を共有するため、k3dクラスタ内のKafkaへ到達できず、`estop_bridge`の
 Kafka疎通は常に失敗する(`assume_healthy`バイパスが必要になる)。

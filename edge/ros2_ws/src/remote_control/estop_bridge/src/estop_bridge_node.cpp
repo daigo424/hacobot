@@ -28,10 +28,14 @@ EstopBridgeNode::EstopBridgeNode(const rclcpp::NodeOptions & options)
   connect_timeout_ms_(200),
   connectivity_check_period_ms_(2000),
   heartbeat_period_ms_(100),
+  // heartbeat_monitorのliveliness_lease_msと一致させること
+  // (DDS Liveliness QoSのlease durationとして両者が対称である必要がある)。
+  heartbeat_lease_ms_(300),
   assume_healthy_(false),
   is_healthy_(false),
   metrics_port_(9105),
-  consumer_running_(false)
+  consumer_running_(false),
+  connectivity_check_running_(false)
 {
   this->declare_parameter<std::string>("kafka_brokers", kafka_brokers_);
   this->declare_parameter<std::string>("kafka_topic", kafka_topic_);
@@ -43,6 +47,7 @@ EstopBridgeNode::EstopBridgeNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int64_t>("connect_timeout_ms", connect_timeout_ms_);
   this->declare_parameter<int64_t>("connectivity_check_period_ms", connectivity_check_period_ms_);
   this->declare_parameter<int64_t>("heartbeat_period_ms", heartbeat_period_ms_);
+  this->declare_parameter<int64_t>("heartbeat_lease_ms", heartbeat_lease_ms_);
   // 暫定バイパス(comm_bridge_heartbeatから引き継ぎ)。開発環境ではDocker Desktopの
   // ネットワーク境界によりKafkaへのTCP到達性チェック自体が常に失敗するため、
   // safety_bringup.launch.pyではtrueで起動している。
@@ -53,6 +58,7 @@ EstopBridgeNode::EstopBridgeNode(const rclcpp::NodeOptions & options)
 EstopBridgeNode::~EstopBridgeNode()
 {
   stop_consumer_thread();
+  stop_connectivity_check_thread();
 }
 
 EstopBridgeNode::CallbackReturn EstopBridgeNode::on_configure(
@@ -68,6 +74,7 @@ EstopBridgeNode::CallbackReturn EstopBridgeNode::on_configure(
   connect_timeout_ms_ = this->get_parameter("connect_timeout_ms").as_int();
   connectivity_check_period_ms_ = this->get_parameter("connectivity_check_period_ms").as_int();
   heartbeat_period_ms_ = this->get_parameter("heartbeat_period_ms").as_int();
+  heartbeat_lease_ms_ = this->get_parameter("heartbeat_lease_ms").as_int();
   assume_healthy_ = this->get_parameter("assume_healthy").as_bool();
   is_healthy_ = assume_healthy_;
   metrics_port_ = this->get_parameter("metrics_port").as_int();
@@ -75,8 +82,13 @@ EstopBridgeNode::CallbackReturn EstopBridgeNode::on_configure(
 
   anomaly_pub_ = this->create_publisher<safety_msgs::msg::AnomalyEvent>(
     "/safety/anomaly_event", rclcpp::QoS(10));
+  // publish()自体がDDS Liveliness(ManualByTopic)の生存主張を兼ねるため、
+  // 下のon_heartbeat_timer()のpublishロジック自体は変更不要(QoS設定のみで足りる)。
+  const rclcpp::QoS heartbeat_qos = rclcpp::QoS(10)
+    .liveliness(rclcpp::LivelinessPolicy::ManualByTopic)
+    .liveliness_lease_duration(std::chrono::milliseconds(heartbeat_lease_ms_));
   heartbeat_pub_ = this->create_publisher<std_msgs::msg::Empty>(
-    "/safety/heartbeat/comm_bridge", rclcpp::QoS(10));
+    "/safety/heartbeat/comm_bridge", heartbeat_qos);
 
   RCLCPP_INFO(
     this->get_logger(),
@@ -121,10 +133,8 @@ EstopBridgeNode::CallbackReturn EstopBridgeNode::on_activate(
     std::bind(&EstopBridgeNode::on_heartbeat_timer, this));
 
   if (!assume_healthy_) {
-    connectivity_check_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(connectivity_check_period_ms_),
-      std::bind(&EstopBridgeNode::on_connectivity_check_timer, this));
-    on_connectivity_check_timer();
+    connectivity_check_running_ = true;
+    connectivity_check_thread_ = std::thread(&EstopBridgeNode::connectivity_check_loop, this);
   } else {
     // assume_healthy=true(この開発環境の既定)では実際のTCPチェックを行わないため
     // on_connectivity_check_timer()が一度も呼ばれず、ゲージが未設定のままになる。
@@ -145,7 +155,7 @@ EstopBridgeNode::CallbackReturn EstopBridgeNode::on_deactivate(
   const rclcpp_lifecycle::State & /*state*/)
 {
   heartbeat_timer_.reset();
-  connectivity_check_timer_.reset();
+  stop_connectivity_check_thread();
   stop_consumer_thread();
   anomaly_pub_->on_deactivate();
   heartbeat_pub_->on_deactivate();
@@ -169,7 +179,7 @@ EstopBridgeNode::CallbackReturn EstopBridgeNode::on_shutdown(
   const rclcpp_lifecycle::State & /*state*/)
 {
   heartbeat_timer_.reset();
-  connectivity_check_timer_.reset();
+  stop_connectivity_check_thread();
   stop_consumer_thread();
   anomaly_pub_.reset();
   heartbeat_pub_.reset();
@@ -188,6 +198,14 @@ void EstopBridgeNode::stop_consumer_thread()
   if (consumer_) {
     consumer_->close();
     consumer_.reset();
+  }
+}
+
+void EstopBridgeNode::stop_connectivity_check_thread()
+{
+  connectivity_check_running_ = false;
+  if (connectivity_check_thread_.joinable()) {
+    connectivity_check_thread_.join();
   }
 }
 
@@ -262,21 +280,34 @@ void EstopBridgeNode::on_heartbeat_timer()
   }
 }
 
-void EstopBridgeNode::on_connectivity_check_timer()
+void EstopBridgeNode::connectivity_check_loop()
 {
-  const bool reachable = check_tcp_reachable(kafka_host_, kafka_port_, connect_timeout_ms_);
-  if (reachable != is_healthy_) {
-    RCLCPP_WARN(
-      this->get_logger(), "Kafka connectivity (%s:%ld) changed: %s -> %s",
-      kafka_host_.c_str(), kafka_port_,
-      is_healthy_ ? "reachable" : "unreachable",
-      reachable ? "reachable" : "unreachable");
+  // check_tcp_reachable()は同期的にブロックしうるため、heartbeat_timer_と同じexecutor上で
+  // 動かすとハートビート発行自体が詰まって遅延し、heartbeat_monitorの閾値超過を
+  // 誤って引き起こす。Kafkaコンシューマと同じ理由で専用スレッドに分離する。
+  while (connectivity_check_running_) {
+    const bool reachable = check_tcp_reachable(kafka_host_, kafka_port_, connect_timeout_ms_);
+    if (reachable != is_healthy_) {
+      RCLCPP_WARN(
+        this->get_logger(), "Kafka connectivity (%s:%ld) changed: %s -> %s",
+        kafka_host_.c_str(), kafka_port_,
+        is_healthy_ ? "reachable" : "unreachable",
+        reachable ? "reachable" : "unreachable");
+    }
+    is_healthy_ = reachable;
+    metrics_.set_gauge(
+      "estop_bridge_kafka_reachable", reachable ? 1.0 : 0.0,
+      "1 if the TCP connectivity check to the Kafka broker last succeeded "
+      "(always reported as assume_healthy's value when the real check is bypassed)");
+
+    // stop_connectivity_check_thread()からの停止要求に素早く応答できるよう、
+    // 待機を細切れにする。
+    int64_t waited_ms = 0;
+    while (connectivity_check_running_ && waited_ms < connectivity_check_period_ms_) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      waited_ms += 100;
+    }
   }
-  is_healthy_ = reachable;
-  metrics_.set_gauge(
-    "estop_bridge_kafka_reachable", reachable ? 1.0 : 0.0,
-    "1 if the TCP connectivity check to the Kafka broker last succeeded "
-    "(always reported as assume_healthy's value when the real check is bypassed)");
 }
 
 bool EstopBridgeNode::check_tcp_reachable(

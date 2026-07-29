@@ -5,7 +5,16 @@ TurtleBot3(Waffle)のGazeboシミュレーションと、Nav2 + SLAM Toolboxに�
 `slam_toolbox`)を薄くラップしているだけで、ワールドやNav2本体は再実装していない。
 
 事前に作った地図とAMCLで自己位置推定する構成ではなく、**走行しながら地図を作るオンライン
-SLAM(slam_toolbox)を自己位置推定源として使う**構成になっている(`nav2_params.yaml`参照)。
+SLAM(slam_toolbox)を自己位置推定源として使う**構成になっている
+(`nav2_params_builder`パッケージ参照)。
+
+**注意**: このパッケージの`gazebo_sim.launch.py`/`nav2_bringup.launch.py`は単体動作確認用の
+経路で、実際の開発・検証はマルチロボット対応の`spawn_robot`/`create_world`パッケージ経由
+(`make create-world` → `make build-map-auto`、リポジトリ直下の`README.md`参照)で行っている。
+`gazebo_sim.launch.py`(TurtleBot3本家の`turtlebot3_world.launch.py`をそのまま起動)自体は
+Gazebo Harmonic上でも`/scan`等のブリッジを含め正常動作する。GUI("gz sim -g")を
+`kill -9`する等、外部からの終了は避けること(本家launchが`on_exit_shutdown=true`を
+設定しており、GUIの終了がサーバー・ブリッジまで巻き添えでシャットダウンさせる)。
 
 ## セットアップ
 
@@ -72,4 +81,11 @@ docker exec -it ros2_nav2_container bash -c "
 
 - `launch/gazebo_sim.launch.py`: `turtlebot3_gazebo` の `turtlebot3_world.launch.py` を起動するだけの薄いラッパー
 - `launch/nav2_bringup.launch.py`: `nav2_bringup` の `bringup_launch.py` を `slam:=true` で起動するだけの薄いラッパー
-- `params/nav2_params.yaml`: TurtleBot3 Waffle向けにチューニングされたNav2パラメータ + SLAM Toolboxパラメータ(由来は`params/nav2_params.yaml`冒頭コメント参照)
+- `params/defaults/`: 本家Nav2(`nav2_params.yaml`、MPPIベース)・TurtleBot3 Waffleサンプル
+  (`waffle.yaml`)・slam_toolbox本家(`mapper_params_online_sync.yaml`)の無加工リファレンス。
+  実際にNav2へ渡すパラメータは、これらを`nav2_params_builder`パッケージ
+  (`nav2_params_builder/builder.py`)が実行時にマージ・上書きして生成する(車体依存値は
+  `waffle.yaml`から読み込み、`collision_monitor`の安全ゾーンや`docking_server`のダミー実装等
+  hacobot固有の差分だけをコード上で明示的に上書きする方針。詳細は`build_nav2_params_yaml()`の
+  docstring参照)。以前あった単一マージ済みファイル`params/nav2_params.yaml`は、本家からの差分・
+  非差分が区別できなかったためこの構成に置き換えて削除した

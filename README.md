@@ -3,13 +3,13 @@
 自動運転・配送ロボットシステムの**長時間安定稼働・フェイルセーフ・分散環境での安全な停止制御**を
 検証するプロジェクトです。TurtleBot3 + Nav2による自律走行を題材に、通信途絶・センサー故障・
 クラウド側障害といった異常系を実際に発生させ、ロボット側が自律的に安全停止へ倒れる仕組みを、
-単体テスト・実機統合・カオスエンジニアリングの3段階で検証しています。
+単体テスト・シミュレーター(Gazebo)上での統合・カオスエンジニアリングの3段階で検証しています。
 
-## シミュレーション
+## デモ動画
 
-| Gazebo | RViz |
-|---|---|
-| ![gazebo](docs/gazebo.png) | ![rviz](docs/rviz.png) |
+<div><video controls src="docs/build-map.mp4" muted="false"></video></div>
+
+`make create-world` → `make build-map-auto`で、explore_liteによる自動フロンティア探査から地図の自動保存までをシミュレーター(Gazebo)上で実行している様子。
 
 ## 本番想定図
 
@@ -37,7 +37,7 @@ Kafkaへ到達できるようになり、本物のKafkaメッセージで`estop_
 (20〜50秒程度)と接続チェック間隔(2秒)のタイミング次第で毎回検知できるとは限らない。
 (実行環境による制約は「既知の制約」を参照)
 
-### 実際にロボット側で確認できた壊し方(実機統合テスト)
+### 実際にロボット側で確認できた壊し方(シミュレーター上での統合テスト)
 
 上記のネットワーク制約が無い部分(ロボット自身のプロセス・センサー)は、実際に壊して
 正しく安全停止することを確認済み。
@@ -168,16 +168,18 @@ make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
 
 ## 既知の制約
 
-- このリポジトリはWSL2上のdev/検証環境を前提としている。コンテナ実行基盤がDocker Desktopか
-  ネイティブDocker Engine(`docker-ce`)かで、Kafka連携の一部(リモートE-Stopの実際の到達、
-  カオス実験のロボット側への波及)が検証できるかどうかが変わる(Docker Desktopはコンテナを
-  別ネットワーク名前空間のVMで動かすため、k3dクラスタ内のKafkaへ到達できない)。
-  **注意**: `safety_bringup.launch.py`は`estop_bridge`を`assume_healthy: false`
-  (実際にTCP疎通チェックを行う設定)で起動する。Docker Desktop環境ではこの疎通チェックが
-  常に失敗し、`comm_bridge`のハートビートが一度も送られないため、起動から数秒で
-  `heartbeat_monitor`がハートビート途絶を検知してSAFE_STOPへ遷移する
-  (これはフェイルセーフとして正しい挙動だが、Docker Desktopで単に動作確認したいだけの場合は
-  想定外の停止に見える)。回避するには`estop_bridge`の`assume_healthy`パラメータを
+- 開発機はネイティブUbuntu(NVIDIA実GPU、`nvidia-container-toolkit`経由でパススルー)を
+  前提としている。WSL2上での実行にも対応しており、`Makefile`が`/proc/version`から
+  自動判定して`edge/docker/docker-compose.gpu-native.yml`(ネイティブ)/
+  `docker-compose.gpu-wsl.yml`(WSL2、`/dev/dxg`経由のMesa d3d12変換)を切り替える。
+- コンテナ実行基盤がDocker Desktopかネイティブ`docker-ce`かで、Kafka連携の一部
+  (リモートE-Stopの実際の到達、カオス実験のロボット側への波及)が検証できるかどうかが変わる
+  (Docker Desktopはコンテナを別ネットワーク名前空間のVMで動かすため、k3dクラスタ内のKafkaへ
+  到達できない)。**注意**: `safety_bringup.launch.py`は`estop_bridge`を
+  `assume_healthy: false`(実際にTCP疎通チェックを行う設定)で起動する。Docker Desktop環境では
+  この疎通チェックが常に失敗し、起動から数秒で`heartbeat_monitor`がハートビート途絶を検知して
+  SAFE_STOPへ遷移する(フェイルセーフとして正しい挙動だが、Docker Desktopで単に動作確認したい
+  だけの場合は想定外の停止に見える)。回避するには`estop_bridge`の`assume_healthy`パラメータを
   `true`で上書きして起動すること
 - k3dはシングルノード構成であり、クラスタ自体の高可用性は範囲外。マルチAZ構成のAWS本番設計は
   `docs/aws-production-architecture.drawio`を参照
@@ -185,25 +187,13 @@ make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
   復旧速度(20〜50秒程度)と`estop_bridge`の接続チェック間隔(2秒)のタイミング次第で
   毎回検知できるとは限らない。フェイルセーフの実効性そのものは`demos/03`/`demos/07`で
   安定して確認できる
-- Gazebo(`gzserver`)はデフォルトではWSL2上でGPUパススルーが有効にならず、ソフトウェア
-  レンダリング(Mesa `swrast`)にフォールバックしてCPU使用率が跳ね上がる(実測700〜800%)。
-  `edge/docker/docker-compose.yml`で`/dev/dxg`・`/usr/lib/wsl`をコンテナへ渡すことで解消
-  (8〜10倍のCPU削減を確認)。あわせてLiDARセンサーも`type="ray"`(CPUレイキャスト)から
-  `type="gpu_ray"`へパッチ済み(`Dockerfile`参照)。
-- **WSL2ホスト起因と特定した周期的フリーズ**: GPU修正後もなお、`/scan`・`/camera/image_raw`が
-  約30〜40秒間隔で3〜4秒程度途絶し、`watchdog`のCRITICAL誤検知→SAFE_STOPを誘発することがある。
-  調査の結果、これはROS2/DDS/Gazebo側のバグではなく**ホスト(WSL2 VM)レベルの周期的フリーズ**
-  であると特定した。根拠: 途絶が起きている間、gzserverのCPU計測とは無関係な監視プロセス
-  (`pidstat`)自体のサンプリングも同じ数秒間まるごと欠落する(`pidstat`は1秒間隔でサンプリング
-  しているが、`04:33:04 -> 04:33:09`のように4〜5秒分のサンプルが丸ごと消える)。監視対象の
-  gzserverだけでなく無関係なpidstatプロセスまで同時に止まることから、コンテナ/アプリ層ではなく
-  WSL2 VM全体が数秒間スケジューリングを止めていると考えられる(cgroup CPU throttling
-  (`nr_throttled=0`)、スワップ(ほぼ未使用)は原因から除外済み。Windows側の具体的な発生源
-  (Defenderのリアルタイムスキャン、vhdxの動的拡張、Hyper-Vのメモリバルーニング等)は
-  コンテナ内からは特定不可)。
-  **対応**: `watchdog`/`heartbeat_monitor`/`nav2_heartbeat_adapter`の`startup_grace_period_ms`を
-  実測(起動後30秒以上経過してから初回のフリーズが発生するケースを確認)に合わせて40000msへ
-  拡大し、起動直後の誤検知は解消した。ただしこの周期的フリーズ自体は起動後も継続するため、
-  稼働中に`watchdog`のCRITICAL(SAFE_STOP)が数十秒おきに再発しうるという制約は残っている。
-  `timeout_ms`(センサー途絶の検知閾値、既定500ms)自体は安全設計上の核となる値のため緩めていない。
-  根本的な解消にはWSL2ではないネイティブLinux環境への移行が必要と考えられる(2026年7月時点)
+- **ネイティブGPUでも残るホストスケジューリング競合**: `gz sim server`(物理演算・センサーの
+  レイトレーシング)と`gz sim gui`(3Dレンダリング)はホストCPUを恒常的に使い続け、瞬間的に
+  (実測で最大400ms程度)他プロセス(`estop_bridge`のDDS/Kafka関連スレッド等)のスケジューリングを
+  圧迫することが`/proc/<pid>/task/<tid>/schedstat`の計測で確認できる。これはWSL2固有の問題では
+  なくホスト非依存で、`gz sim server`単体のCPU負荷自体が原因のため完全な解消は難しい。
+  対策として、`spawn_robot.launch.py`/`safety_bringup.launch.py`系の起動引数
+  `heartbeat_lease_ms`(既定300msの実機想定値。`build_map.launch.py`では2000msに緩和)で
+  DDS Liveliness QoSのlease durationを調整できるほか、`create_world.launch.py`に
+  `headless:=true`引数(`gz sim gui`を起動せずサーバーのみで動かす)を追加してGUI分の
+  負荷を削減できる

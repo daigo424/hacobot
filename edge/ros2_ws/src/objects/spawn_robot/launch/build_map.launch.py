@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""explore_liteでフロンティア探査させながらSLAMで地図を作り、探査完了時に自動保存する。
+"""SLAMで地図を作りながら、explore_liteによる自動探査、またはキーボードでの手動操縦で走らせる。
 
-spawn_robot.launch.pyをslam:=trueでincludeして地図生成専用ロボットを1体立て、
-そこにexplore_liteのフロンティア探査ノードを追加で載せる。explore_liteは
+spawn_robot.launch.pyをslam:=trueでincludeして地図生成専用ロボットを1体立てる。
+exploration_mode:=auto(既定)ではexplore_liteのフロンティア探査ノードを追加で載せ、
 「これ以上未探索のフロンティアが無い」と判断すると/explore/statusへ
 EXPLORATION_COMPLETEをpublishするので、それを検知したmap_saver_trigger.pyが
 nav2_map_serverのmap_saver_cliを呼んで地図を保存する(explore_lite自体には
 保存機能が無いため)。
+
+exploration_mode:=manualではexplore_liteを起動せず、代わりに別ターミナルで
+teleop_twist_keyboardを起動してもらう(キーボード入力はttyの生読み取りが要るため、
+ros2 launch配下のノードとして埋め込むと標準入力が正しく渡らないことがある、という
+既知の制約を踏まえた構成)。保存はEXPLORATION_COMPLETEが来ないため自動発火しない。
+save_map_triggerトピックへ空メッセージをpublishすると同じ保存処理が手動で起動できる。
 
 保存先はspawn_robot.launch.pyのDEFAULT_MAP_DIR/DEFAULT_MAP_NAMEと既定で
 一致させてあるため、地図生成後は他のspawn_robot.launch.py呼び出し
@@ -17,10 +23,10 @@ import tempfile
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 # spawn_robot.launch.pyのDEFAULT_MAP_DIRと合わせてある(2箇所での定数重複だが、
@@ -45,20 +51,40 @@ def launch_setup(context, *args, **kwargs):
             'y_pose': LaunchConfiguration('y_pose'),
             'z_pose': LaunchConfiguration('z_pose'),
             'slam': 'true',
-            'auto_seed_map': 'true',
+            'auto_seed_map': LaunchConfiguration('auto_seed_map'),
             'watchdog_timeout_ms': LaunchConfiguration('watchdog_timeout_ms'),
+            'heartbeat_lease_ms': LaunchConfiguration('heartbeat_lease_ms'),
         }.items(),
     )
 
-    explore_dir = get_package_share_directory('explore_lite')
-    explore_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(explore_dir, 'launch', 'explore.launch.py')
+    is_auto = PythonExpression(["'", LaunchConfiguration('exploration_mode'), "' == 'auto'"])
+    is_manual = PythonExpression(["'", LaunchConfiguration('exploration_mode'), "' == 'manual'"])
+
+    # explore_liteはcostmapが少しでも使えるようになった時点で動き出せてしまい、
+    # それはinitial_map_seederの360度旋回が終わる前でも起こりうる。ここで直接
+    # includeせず、旋回完了(initial_map_seed_doneトピック)を待つexplore_gate.py
+    # 経由でexplore_liteを起動する(spawn_robot.launch.py参照)。
+    explore_cmd = Node(
+        package='spawn_robot',
+        executable='explore_gate.py',
+        namespace=ns,
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+        condition=IfCondition(is_auto),
+    )
+
+    # teleop_twist_keyboardはtty入力の生読み取りが要るため、ros2 launch配下の
+    # ノードとしては起動しない(標準入力が正しく渡らないことがある既知の制約)。
+    # 別ターミナルで実行してもらうためのコマンドをここに案内表示する。
+    manual_mode_hint = LogInfo(
+        msg=(
+            '手動操縦モードです。別のターミナルで以下を実行してください:\n'
+            'ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args '
+            f'-p stamped:=true -r cmd_vel:=/{ns}/cmd_vel_nav2_raw\n'
+            '走行を終えたら地図を保存: '
+            f'ros2 topic pub --once /{ns}/save_map_trigger std_msgs/msg/Empty {{}}'
         ),
-        launch_arguments={
-            'namespace': ns,
-            'use_sim_time': 'true',
-        }.items(),
+        condition=IfCondition(is_manual),
     )
 
     map_saver_trigger_cmd = Node(
@@ -85,7 +111,7 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration('rviz')),
     )
 
-    return [spawn_cmd, explore_cmd, map_saver_trigger_cmd, rviz_cmd]
+    return [spawn_cmd, explore_cmd, manual_mode_hint, map_saver_trigger_cmd, rviz_cmd]
 
 
 def build_rviz_config(ns):
@@ -114,6 +140,16 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
     ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
     ld.add_action(DeclareLaunchArgument(
+        'auto_seed_map', default_value='true',
+        description=(
+            '起動直後にinitial_map_seeder.pyが自動で円運動させ、地図が空で'
+            'Nav2が経路計画できないデッドロックを避けるか。falseにすると'
+            'この自動走行(いわゆる「最初にくるくる回る」動き)が無くなるが、'
+            '手動操縦(exploration_mode:=manual)等で自分で最初の一歩を'
+            '動かす必要がある'
+        ),
+    ))
+    ld.add_action(DeclareLaunchArgument(
         'map_name', default_value='turtlebot3_world',
         description=(
             '保存する地図ファイル名(拡張子無し)。spawn_robot.launch.pyの既定の'
@@ -125,10 +161,28 @@ def generate_launch_description():
         description='探査の様子(地図・ロボット)をRVizで表示するか',
     ))
     ld.add_action(DeclareLaunchArgument(
+        'exploration_mode', default_value='auto',
+        description=(
+            "'auto'(既定、explore_liteによる自動フロンティア探査)または"
+            "'manual'(teleop_twist_keyboardによる手動操縦。別ターミナルでの"
+            '起動が必要、詳細は起動時のログ案内を参照)'
+        ),
+    ))
+    ld.add_action(DeclareLaunchArgument(
         'watchdog_timeout_ms', default_value='1000',
         description=(
             'このロボットのWatchdogセンサー途絶しきい値[ms]。既定の実機値(500)だと'
             'Gazeboのレンダリング負荷で誤ってSAFE_STOPに入り探査が止まるため緩めている。'
+        ),
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'heartbeat_lease_ms', default_value='2000',
+        description=(
+            'heartbeat_monitor/estop_bridge/nav2_heartbeat_adapter間のDDS Liveliness QoSの'
+            'lease duration[ms]。既定の実機値(300)だと、build_map中はGazeboのシミュレーション'
+            '計算負荷(GUIの有無に関わらず、物理演算・センサーのレイトレーシング自体)が'
+            'ホストのスケジューリングを瞬間的に(実測で最大420ms程度)圧迫し、誤ってSAFE_STOPに'
+            '入るため、実測値に対して約5倍の余裕を見て緩めている。'
         ),
     ))
 

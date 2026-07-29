@@ -13,6 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
+find_package(rosgraph_msgs REQUIRED)
 find_package(safety_metrics REQUIRED)
 
 include_directories(include)
@@ -25,6 +26,7 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   rclcpp_lifecycle
   std_msgs
   lifecycle_msgs
+  rosgraph_msgs
   safety_metrics
 )
 

@@ -38,7 +38,7 @@ seaweedfs-ui:
 #   make colcon-build-test PKG=safety_state_machine
 #   make colcon-build   # 全パッケージ
 
-.PHONY: up build test build-test new-launch-pkg rviz
+.PHONY: up build test build-test new-launch-pkg rviz rviz-flat
 
 COMPOSE_PJ_NAME    := hacobot
 # WSL2かネイティブLinuxかでGPUパススルーの構成が別物になる(edge/docker/docker-compose.gpu-*.yml参照)
@@ -94,6 +94,19 @@ new-launch-pkg:
 # 例: make rviz ROBOT_ID=tb3_02
 ROBOT_ID ?= tb3_01
 
+# ROS2: Launch Gazebo Sim (nav2_bringup_custom)/Nav2 Bringupは、spawn_robot.launch.pyの
+# 名前空間の仕組みを通らない素のupstream demoパス(turtlebot3_world.launch.py直呼び)なので、
+# トピックは/scan・/map等、接頭辞なしのまま。hacobot_view.rvizの"tb3_01/"を空文字に
+# 置換して剥がすだけでよく、/tfのremapも不要(ROBOT_IDに対応する専用namespaceが無いため)。
+rviz-flat:
+	$(EXEC) $(ROS2_SERVICE) bash -c "\
+		$(CMD_ROS2_SOURCE) && \
+		$(CMD_ROS2_WS_SOURCE) && \
+		RVIZ_SRC=\$$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && \
+		RVIZ_TMP=/tmp/hacobot_view_flat.rviz && \
+		sed 's#/tb3_01/#/#g' \$$RVIZ_SRC > \$$RVIZ_TMP && \
+		rviz2 -d \$$RVIZ_TMP"
+
 rviz:
 	$(EXEC) $(ROS2_SERVICE) bash -c "\
 		$(CMD_ROS2_SOURCE) && \
@@ -116,13 +129,53 @@ colcon:
 
 colcon-build:
 	$(MAKE) colcon CMD_RUN="colcon build $(COLCON_SELECT)"
+colcon-build-clean:
+	$(MAKE) colcon CMD_RUN="rm -rf build/ install/ log/ && colcon build  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --no-warn-unused-cli $(COLCON_SELECT)"
 colcon-test:
 	# --executor sequential: 複数パッケージを並列実行すると、別パッケージのgtest同士が
 	# 同じROSトピック名(例: /safety/anomaly_event)で混信することがあるため直列実行する
 	$(MAKE) colcon CMD_RUN="colcon test --executor sequential $(COLCON_SELECT) && colcon test-result --verbose"
 colcon-build-test: colcon-build colcon-test
 
+# ROS2: デバッグ用の便利コマンド群
 topic-list:
 	$(MAKE) colcon CMD_RUN="ros2 topic list"
 tf2-tools-view-frames:
 	$(MAKE) colcon CMD_RUN="ros2 run tf2_tools view_frames --ros-args --remap /tf:=/tb3_builder/tf --remap /tf_static:=/tb3_builder/tf_static"
+rqt-tf-tree:
+	$(MAKE) colcon CMD_RUN="ros2 run rqt_tf_tree rqt_tf_tree --ros-args -p use_sim_time:=true -r /tf:=/tb3_builder/tf -r /tf_static:=/tb3_builder/tf_static"
+topic-hz-tf:
+	$(MAKE) colcon CMD_RUN="ros2 topic hz /tb3_builder/tf"
+topic-hz-tf-none:
+	$(MAKE) colcon CMD_RUN="ros2 topic hz /tf"
+topic-hz-tf-static:
+	$(MAKE) colcon CMD_RUN="ros2 topic hz /tb3_builder/tf_static"
+topic-hz-tf-static-none:
+	$(MAKE) colcon CMD_RUN="ros2 topic hz /tf_static"
+topic-echo-tf-static:
+	$(MAKE) colcon CMD_RUN="ros2 topic echo /tb3_builder/tf_static --qos-durability transient_local --qos-reliability reliable --use-sim-time --once"
+topic-echo-tf-static-none:
+	$(MAKE) colcon CMD_RUN="ros2 topic echo /tf_static --qos-durability transient_local --qos-reliability reliable --use-sim-time --once"
+param-dump-slam-toolbox:
+	$(MAKE) colcon CMD_RUN="ros2 param dump /tb3_builder/slam_toolbox"
+lifecycle-get-slam-toolbox:
+	$(MAKE) colcon CMD_RUN="ros2 lifecycle get /tb3_builder/slam_toolbox"
+param-get-distance-variance-penalty:
+	$(MAKE) colcon CMD_RUN="ros2 param get /tb3_builder/slam_toolbox distance_variance_penalty"
+param-get-angle-variance-penalty:
+	$(MAKE) colcon CMD_RUN="ros2 param get /tb3_builder/slam_toolbox angle_variance_penalty"
+
+# build_map.launch.pyのexploration_mode:=manual時はteleop_twist_keyboardを別ターミナルで
+# 起動する必要がある(tty生読み取りのためros2 launch配下のノードにはできない、
+# build_map.launch.pyのdocstring参照)。VSCodeのlaunch.jsonから個別に選んで起動できるよう、
+# create-world/build-map-auto/build-map-manual/teleop/save-mapをそれぞれ独立したターゲットにする。
+create-world:
+	$(MAKE) colcon CMD_RUN="ros2 run create_world world_supervisor.py"
+build-map-auto:
+	$(MAKE) colcon CMD_RUN="ros2 launch spawn_robot build_map.launch.py exploration_mode:=auto"
+build-map-manual:
+	$(MAKE) colcon CMD_RUN="ros2 launch spawn_robot build_map.launch.py exploration_mode:=manual"
+teleop:
+	$(MAKE) colcon CMD_RUN="ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -r cmd_vel:=/tb3_builder/cmd_vel_nav2_raw"
+save-map:
+	$(MAKE) colcon CMD_RUN="ros2 topic pub --once /tb3_builder/save_map_trigger std_msgs/msg/Empty {}"

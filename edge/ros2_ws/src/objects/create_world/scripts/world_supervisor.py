@@ -30,6 +30,16 @@ def _terminate_group(pgid, sig):
         pass
 
 
+def _kill_orphan_gz_sim():
+    # ros2 launchのExecuteProcessはgz simを別セッション/プロセスグループで起動するため、
+    # os.killpg(pgid, ...)だけでは届かずgz sim serverだけ生き残ることがある
+    # (VSCodeからのCreateWorld停止操作でGazeboだけ残るのを確認済み)。名前指定で確実に後始末する。
+    subprocess.run(
+        ['pkill', '-9', '-f', '^gz sim server$'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
 def _gz_sim_server_alive():
     return subprocess.run(
         ['pgrep', '-f', '^gz sim server$'], stdout=subprocess.DEVNULL
@@ -79,10 +89,12 @@ def main():
             except subprocess.TimeoutExpired:
                 pass
             _terminate_group(pgid, signal.SIGKILL)
+            _kill_orphan_gz_sim()
             break
 
         print('[world_supervisor] ワールドを再起動します', flush=True)
         _terminate_group(pgid, signal.SIGKILL)
+        _kill_orphan_gz_sim()
         time.sleep(RESTART_DELAY_SEC)
 
 

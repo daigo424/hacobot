@@ -552,15 +552,93 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /tb3_01/safety/state_overlay
       Value: true
-      font: DejaVu Sans Mono
-      height: 40
+      font: Open Sans
+      height: 36
       hor_alignment: left
       hor_dist: 0
       line width: 2
-      text size: 10
+      text size: 9
       ver_alignment: top
       ver_dist: 0
-      width: 400
+      width: 800
+    - Background Alpha: 0.6
+      Background Color: 0; 0; 0
+      Class: rviz_2d_overlay_plugins/TextOverlay
+      Enabled: true
+      Foreground Alpha: 1
+      Foreground Color: 255; 255; 255
+      Name: StallRecoveryMode
+      Overtake BG Color Properties: true
+      Overtake FG Color Properties: true
+      Overtake Position Properties: false
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tb3_01/stall_recovery_mode_overlay
+      Value: true
+      font: Open Sans
+      height: 36
+      hor_alignment: left
+      hor_dist: 0
+      line width: 2
+      text size: 9
+      ver_alignment: top
+      ver_dist: 41
+      width: 800
+    - Background Alpha: 0.6
+      Background Color: 0; 0; 0
+      Class: rviz_2d_overlay_plugins/TextOverlay
+      Enabled: true
+      Foreground Alpha: 1
+      Foreground Color: 255; 255; 255
+      Name: AnomalyEvent
+      Overtake BG Color Properties: true
+      Overtake FG Color Properties: true
+      Overtake Position Properties: false
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tb3_01/anomaly_event_overlay
+      Value: true
+      font: Open Sans
+      height: 79
+      hor_alignment: left
+      hor_dist: 0
+      line width: 2
+      text size: 9
+      ver_alignment: top
+      ver_dist: 166
+      width: 800
+    - Background Alpha: 0.6
+      Background Color: 0; 0; 0
+      Class: rviz_2d_overlay_plugins/TextOverlay
+      Enabled: true
+      Foreground Alpha: 1
+      Foreground Color: 255; 255; 255
+      Name: StallRecoveryHistory
+      Overtake BG Color Properties: true
+      Overtake FG Color Properties: true
+      Overtake Position Properties: false
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tb3_01/stall_recovery_history_overlay
+      Value: true
+      font: Open Sans
+      height: 79
+      hor_alignment: left
+      hor_dist: 0
+      line width: 2
+      text size: 9
+      ver_alignment: top
+      ver_dist: 82
+      width: 800
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

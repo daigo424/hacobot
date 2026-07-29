@@ -2,7 +2,8 @@
 # docs/verification_guide.md 手順2: Gazebo + Nav2 + フェイルセーフ層の起動確認
 #
 # 成功の目安: heartbeat_monitor / safety_state_machine / watchdog /
-# nav2_heartbeat_adapter / estop_bridge / bt_navigator などが ros2 node list に出る
+# nav2_heartbeat_adapter / estop_bridge / stall_recovery / bt_navigator などが
+# ros2 node list に出る
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source lib/common.sh
@@ -15,6 +16,7 @@ EXPECTED_NODES=(
   watchdog
   nav2_heartbeat_adapter
   estop_bridge
+  stall_recovery
   bt_navigator
 )
 
@@ -55,15 +57,13 @@ docker exec -d "$CONTAINER_NAME" bash -c \
    ros2 launch nav2_bringup_custom gazebo_sim.launch.py > /tmp/demo_gazebo.log 2>&1"
 sleep 15
 
-# GUIは重いだけで仕組みに影響しないので落とす。gazebo_sim.launch.py(turtlebot3本家)は
-# server(-s)/GUI(-g)を別プロセスとして起動するため"gz sim -g"だが、create_world.launch.py
-# (spawn_robotの新しいマルチロボット経路)は分割せず"gz sim server"/"gz sim gui"という
-# 名前の子プロセスに分かれるため、両方にマッチするパターンにする(片方だけだとGUIが
-# 残ったままになるか、経路によってはサーバーごと巻き添えで落ちる)
-docker exec "$CONTAINER_NAME" bash -c \
-  "ps aux | grep -E 'gz sim (gui|-g( |\$))' | grep -v grep | awk '{print \$2}' | xargs -r kill -9" >/dev/null 2>&1
+# 以前はGUI("gz sim -g")をkill -9してCPU負荷を下げていたが、gazebo_sim.launch.py
+# (turtlebot3本家のturtlebot3_world.launch.py)はサーバー・GUI双方に
+# on_exit_shutdown=trueを設定しており、GUIプロセスの終了(kill -9含む)がランチツリー
+# 全体のシャットダウンを引き起こし、/scan等を橋渡しするros_gz_bridgeまで巻き添えで
+# 落ちていた(SAFE_STOPの原因になる実害を確認済みのため、GUIは殺さずそのまま動かす)。
 
-log "Nav2 + safety_bringup(5ノード)を起動します..."
+log "Nav2 + safety_bringup(6ノード)を起動します..."
 docker exec -d "$CONTAINER_NAME" bash -c \
   "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
    ros2 launch nav2_bringup_custom nav2_bringup.launch.py > /tmp/demo_nav2.log 2>&1"

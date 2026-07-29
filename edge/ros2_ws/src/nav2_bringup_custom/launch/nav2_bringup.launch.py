@@ -4,8 +4,8 @@
 nav2_bringup パッケージの bringup_launch.py を slam:=true で includeする薄いラッパー。
 slam:=true にすることで、事前地図+AMCLではなく、走行しながら地図を作るオンラインSLAM
 (slam_toolbox)を自己位置推定源として使う構成になる(nav2_bringupの標準機能)。
-params_file には本パッケージの params/nav2_params.yaml (TurtleBot3 Waffle向けにチューニング
-+ slam_toolbox設定を含む)を渡す。
+params_file には、本家Nav2既定値(params/defaults/nav2_params.yaml)をベースにhacobot固有の
+差分だけをコード上で上書きしたYAML(nav2_params_builder.build_nav2_params_yaml()参照)を渡す。
 
 フェイルセーフ層との統合のため、以下2点を追加している:
 1. Nav2の最終的な速度指令の出力先を /cmd_vel_nav2 にリマップする(SetRemap)。
@@ -22,16 +22,13 @@ from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, I
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import SetRemap
+from nav2_params_builder import build_nav2_params_yaml
 
 
 def generate_launch_description():
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     safety_bringup_dir = get_package_share_directory('safety_bringup')
-    default_params_file = os.path.join(
-        get_package_share_directory('nav2_bringup_custom'),
-        'params',
-        'nav2_params.yaml'
-    )
+    default_params_file = build_nav2_params_yaml()
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     params_file = LaunchConfiguration('params_file', default=default_params_file)

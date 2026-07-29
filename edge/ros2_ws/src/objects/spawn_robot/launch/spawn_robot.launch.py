@@ -10,6 +10,7 @@ slam引数でSLAM(地図を作りながら走る)/AMCL(既存の地図を頼り�
 (DEFAULT_MAP_DIR/DEFAULT_MAP_NAME.yaml)の有無で自動判定する。
 """
 import colorsys
+import copy
 import hashlib
 import os
 import subprocess
@@ -31,6 +32,7 @@ from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
+from nav2_params_builder import build_nav2_params_yaml
 
 # build_map.launch.pyが保存する地図の置き場所。docker-compose.ymlの/dataマウントと
 # create_world.launch.pyのDEFAULT_MAP_YAMLに値を合わせる必要がある。
@@ -132,9 +134,7 @@ def launch_setup(context, *args, **kwargs):
     # bringup_launch.pyは自分自身でPushRosNamespaceするため、下のrobot_group(自前の
     # PushRosNamespace)には含めない(二重にnamespaceが積まれる)。
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
-    nav2_params_file = os.path.join(
-        get_package_share_directory('nav2_bringup_custom'), 'params', 'nav2_params.yaml'
-    )
+    nav2_params_file = build_nav2_params_yaml()
     if not use_slam:
         # AMCLは initial_pose未設定だと(RVizで手動指定しない限り)自己位置推定が収束せず
         # 動けないため、mapフレームでの初期位置を明示的に渡す(yawは未指定のため0.0固定)。
@@ -143,7 +143,7 @@ def launch_setup(context, *args, **kwargs):
         nav2_params_file = build_amcl_params_yaml(
             nav2_params_file, initial_pose_x_val, initial_pose_y_val)
     else:
-        nav2_params_file = build_slam_costmap_overrides_yaml(nav2_params_file)
+        nav2_params_file = build_slam_overrides_yaml(nav2_params_file, ns)
     nav2_cmd = GroupAction([
         # Nav2の相対"cmd_vel"出力を"cmd_vel_nav2_raw"に付け替える。stall_recoveryが
         # これを中継してcmd_vel_nav2へ流す(壁スタック時のみ後退指令に差し替えるため)。
@@ -181,6 +181,7 @@ def launch_setup(context, *args, **kwargs):
         ),
         launch_arguments={
             'watchdog_timeout_ms': LaunchConfiguration('watchdog_timeout_ms'),
+            'heartbeat_lease_ms': LaunchConfiguration('heartbeat_lease_ms'),
         }.items(),
     )
 
@@ -364,22 +365,28 @@ def build_amcl_params_yaml(nav2_params_path, initial_pose_x, initial_pose_y):
     return params_tmp.name
 
 
-def build_slam_costmap_overrides_yaml(nav2_params_path):
-    """SLAMでの地図構築中だけ、local_costmapに障害物との安全マージンを広げた値を適用する。
+def build_slam_overrides_yaml(nav2_params_path, ns):
+    """SLAMでの地図構築中だけ、slam_toolboxのスキャンマッチングパラメータを上書きする。
 
-    地図がまだ無い探索中は障害物の見え方の誤差やオドメトリのずれの影響を受けやすいため、
-    確立済みの地図に対して走行するAMCLナビゲーション時より余裕を持たせる
-    (機体の物理半径に合わせたrobot_radius、コスト勾配を広げるinflation_radius、
-    勾配を緩やかにするcost_scaling_factor)。
+    distance_variance_penalty/angle_variance_penaltyを上げる。この2つはKartoの
+    スキャンマッチャーがodom予測位置からの逸脱にかけるペナルティの分散で、大きいほど
+    odom予測から離れた候補への減点が緩くなり、LiDARの相関スコアの方が支配的になる
+    (車輪スリップでodomがずれても、スキャンマッチングでの補正が効きやすくなる)。
     """
     with open(nav2_params_path, 'r') as f:
         params = yaml.safe_load(f)
 
-    local_costmap_params = params['local_costmap']['local_costmap']['ros__parameters']
-    local_costmap_params['robot_radius'] = 0.26
-    local_costmap_params['publish_frequency'] = 5.0
-    local_costmap_params['inflation_layer']['inflation_radius'] = 0.45
-    local_costmap_params['inflation_layer']['cost_scaling_factor'] = 3.0
+    slam_toolbox_params = params['slam_toolbox']
+    slam_toolbox_params['ros__parameters']['distance_variance_penalty'] = 2.0
+    slam_toolbox_params['ros__parameters']['angle_variance_penalty'] = 4.0
+    # slam_launch.pyはこのファイルをRewrittenYaml(名前空間付きキーへの書き換え)を経由させず
+    # 生で読むため、素の'slam_toolbox'キーだけでは/{ns}/slam_toolboxと一致せず無視される
+    # (素のキー自体はHasNodeParams判定に要るため残す)。RewrittenYamlと同じ
+    # {ns: {slam_toolbox: {...}}}のネスト構造を追加する。
+    #
+    # フラットな文字列キーにする、またはdeepcopyせず同一dictを2箇所から参照させる(YAML
+    # アンカー化)と、どちらもrclcppのYAMLパーサーがSIGABRTで落ちる(ros2/rcl#563)。
+    params[ns] = {'slam_toolbox': copy.deepcopy(slam_toolbox_params)}
 
     params_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
     yaml.safe_dump(params, params_tmp)
@@ -405,6 +412,10 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'watchdog_timeout_ms', default_value='500',
         description='safety_bringup.launch.pyのwatchdog_timeout_msへそのまま渡す(既定は実機想定の500)',
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'heartbeat_lease_ms', default_value='300',
+        description='safety_bringup.launch.pyのheartbeat_lease_msへそのまま渡す(既定は実機想定の300)',
     ))
     ld.add_action(DeclareLaunchArgument(
         'slam', default_value='auto',

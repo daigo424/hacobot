@@ -21,16 +21,23 @@ Nav2HeartbeatAdapterNode::Nav2HeartbeatAdapterNode(const rclcpp::NodeOptions & o
   // ジッターが大きい可能性があるため、余裕を持たせた値にする。
   liveness_window_ms_(3000),
   heartbeat_period_ms_(100),
+  // heartbeat_monitorのliveliness_lease_msと一致させること
+  // (DDS Liveliness QoSのlease durationとして両者が対称である必要がある)。
+  heartbeat_lease_ms_(300),
   // 起動直後のCPU競合で誤検知が起きたため30000ms->40000msに拡大
   // (詳細・実測根拠はREADME「既知の制約」参照)。この間はliveness_topicの受信有無に
   // 関わらずハートビートをpublishし続け、起動中を異常と誤検知しないようにする。
   startup_grace_period_ms_(40000),
-  metrics_port_(9104)
+  metrics_port_(9104),
+  has_clock_(false),
+  current_sim_time_(0, 0, RCL_ROS_TIME),
+  last_seen_sim_time_(0, 0, RCL_ROS_TIME)
 {
   this->declare_parameter<std::string>("liveness_topic", liveness_topic_);
   this->declare_parameter<std::string>("liveness_topic_type", liveness_topic_type_);
   this->declare_parameter<int64_t>("liveness_window_ms", liveness_window_ms_);
   this->declare_parameter<int64_t>("heartbeat_period_ms", heartbeat_period_ms_);
+  this->declare_parameter<int64_t>("heartbeat_lease_ms", heartbeat_lease_ms_);
   this->declare_parameter<int64_t>("startup_grace_period_ms", startup_grace_period_ms_);
   this->declare_parameter<int64_t>("metrics_port", metrics_port_);
 }
@@ -42,15 +49,22 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_configure(
   liveness_topic_type_ = this->get_parameter("liveness_topic_type").as_string();
   liveness_window_ms_ = this->get_parameter("liveness_window_ms").as_int();
   heartbeat_period_ms_ = this->get_parameter("heartbeat_period_ms").as_int();
+  heartbeat_lease_ms_ = this->get_parameter("heartbeat_lease_ms").as_int();
   startup_grace_period_ms_ = this->get_parameter("startup_grace_period_ms").as_int();
   metrics_port_ = this->get_parameter("metrics_port").as_int();
   metrics_.start(static_cast<int>(metrics_port_));
 
   // configure直後にいきなり「死んでいる」と判定しないよう、猶予として現在時刻で初期化する
   last_seen_ = this->now();
+  has_clock_ = false;
 
+  // publish()自体がDDS Liveliness(ManualByTopic)の生存主張を兼ねるため、
+  // 下のon_heartbeat_timer()のpublishロジック自体は変更不要(QoS設定のみで足りる)。
+  const rclcpp::QoS heartbeat_qos = rclcpp::QoS(10)
+    .liveliness(rclcpp::LivelinessPolicy::ManualByTopic)
+    .liveliness_lease_duration(std::chrono::milliseconds(heartbeat_lease_ms_));
   heartbeat_pub_ = this->create_publisher<std_msgs::msg::Empty>(
-    "/safety/heartbeat/nav2", rclcpp::QoS(10));
+    "/safety/heartbeat/nav2", heartbeat_qos);
 
   RCLCPP_INFO(
     this->get_logger(),
@@ -72,7 +86,14 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_activate(
     liveness_topic_, liveness_topic_type_, rclcpp::SensorDataQoS(),
     [this](std::shared_ptr<rclcpp::SerializedMessage> /*msg*/) {
       last_seen_ = this->now();
+      if (has_clock_) {
+        last_seen_sim_time_ = current_sim_time_;
+      }
     });
+
+  clock_sub_ = this->create_subscription<rosgraph_msgs::msg::Clock>(
+    "/clock", rclcpp::QoS(10),
+    std::bind(&Nav2HeartbeatAdapterNode::on_clock, this, std::placeholders::_1));
 
   heartbeat_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(heartbeat_period_ms_),
@@ -87,6 +108,7 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_deactivate
 {
   heartbeat_timer_.reset();
   liveness_sub_.reset();
+  clock_sub_.reset();
   heartbeat_pub_->on_deactivate();
 
   RCLCPP_INFO(this->get_logger(), "Deactivated");
@@ -108,11 +130,18 @@ Nav2HeartbeatAdapterNode::CallbackReturn Nav2HeartbeatAdapterNode::on_shutdown(
 {
   heartbeat_timer_.reset();
   liveness_sub_.reset();
+  clock_sub_.reset();
   heartbeat_pub_.reset();
   metrics_.stop();
 
   RCLCPP_INFO(this->get_logger(), "Shutdown");
   return CallbackReturn::SUCCESS;
+}
+
+void Nav2HeartbeatAdapterNode::on_clock(const rosgraph_msgs::msg::Clock::SharedPtr msg)
+{
+  current_sim_time_ = rclcpp::Time(msg->clock);
+  has_clock_ = true;
 }
 
 void Nav2HeartbeatAdapterNode::on_heartbeat_timer()
@@ -121,11 +150,24 @@ void Nav2HeartbeatAdapterNode::on_heartbeat_timer()
   const auto since_activation_ms = (now - activated_at_).nanoseconds() / 1000000;
   const auto elapsed_ms = (now - last_seen_).nanoseconds() / 1000000;
   const bool in_startup_grace = since_activation_ms < startup_grace_period_ms_;
-  const bool alive = in_startup_grace || (elapsed_ms <= liveness_window_ms_);
+  bool alive = in_startup_grace || (elapsed_ms <= liveness_window_ms_);
+
+  if (!alive && has_clock_) {
+    // wall clockでは途絶に見えても、GazeboのReal Time Factor低下でシミュレーター全体が
+    // 一時停止しているだけなら、同じ期間のsim time側はほとんど進んでいないはず。
+    // その場合はNav2自体は正常とみなし、異常判定を取り消す。
+    const auto sim_elapsed_ms =
+      (current_sim_time_ - last_seen_sim_time_).nanoseconds() / 1000000;
+    if (sim_elapsed_ms <= liveness_window_ms_) {
+      alive = true;
+    }
+  }
+
   metrics_.set_gauge(
     "nav2_heartbeat_adapter_nav2_alive", alive ? 1.0 : 0.0,
     "1 if Nav2's liveness topic has been seen within liveness_window_ms "
-    "(or still within startup_grace_period_ms)");
+    "(or still within startup_grace_period_ms), accounting for sim-time-vs-wall-clock "
+    "gaps caused by Gazebo real time factor drops");
 
   if (!alive) {
     // Nav2の代表トピックが途絶している = Nav2が死んでいるとみなし、
