@@ -16,6 +16,7 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
   <depend>lifecycle_msgs</depend>
+  <depend>rosgraph_msgs</depend>
   <depend>safety_metrics</depend>
   <exec_depend>nav2_msgs</exec_depend>
 

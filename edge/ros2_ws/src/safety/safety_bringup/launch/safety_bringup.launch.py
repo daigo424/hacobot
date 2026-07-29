@@ -34,6 +34,10 @@ def generate_launch_description():
         name='heartbeat_monitor',
         namespace='',
         output='screen',
+        parameters=[{
+            'liveliness_lease_ms': ParameterValue(
+                LaunchConfiguration('heartbeat_lease_ms'), value_type=int),
+        }],
     )
 
     safety_state_machine_cmd = LifecycleNode(
@@ -61,6 +65,10 @@ def generate_launch_description():
         name='nav2_heartbeat_adapter',
         namespace='',
         output='screen',
+        parameters=[{
+            'heartbeat_lease_ms': ParameterValue(
+                LaunchConfiguration('heartbeat_lease_ms'), value_type=int),
+        }],
     )
 
     estop_bridge_cmd = LifecycleNode(
@@ -82,6 +90,8 @@ def generate_launch_description():
             'kafka_port': 30092,
             # assume_healthyバイパスは不要になった(実際にTCP到達性チェックが機能する)。
             'assume_healthy': False,
+            'heartbeat_lease_ms': ParameterValue(
+                LaunchConfiguration('heartbeat_lease_ms'), value_type=int),
         }],
     )
 
@@ -115,6 +125,17 @@ def generate_launch_description():
             '反映した既定値(500)は変更しないこと。build_map.launch.py配下ではGazeboの'
             'レンダリング負荷でカメラ/LiDARのpublish間隔が一時的に500msを超えやすく、'
             'SAFE_STOPに固定されて探査が進まなくなるため、そちらだけ緩めた値を渡す。'
+        ),
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'heartbeat_lease_ms', default_value='300',
+        description=(
+            'heartbeat_monitor/estop_bridge/nav2_heartbeat_adapter間のDDS Liveliness QoSの'
+            'lease duration[ms]。publisher/subscriber双方で同じ値を使う必要があるため一括で渡す。'
+            '実機の応答性要件をそのまま反映した既定値(300)は変更しないこと。build_map.launch.py'
+            '配下では、Gazeboのシミュレーション計算負荷(GUIの有無に関わらず、物理演算・'
+            'センサーのレイトレーシング自体)がホストのスケジューリングを瞬間的に圧迫し、'
+            '実機では起こらない誤ったSAFE_STOPを引き起こすため、そちらだけ緩めた値を渡す。'
         ),
     ))
     ld.add_action(heartbeat_monitor_cmd)

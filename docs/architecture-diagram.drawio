@@ -1,6 +1,6 @@
 <mxfile host="Electron">
   <diagram id="xUk5RWkYJqVNkXpJ8xd1" name="ページ-1">
-    <mxGraphModel dx="1198" dy="736" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
+    <mxGraphModel dx="603" dy="550" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -23,13 +23,16 @@
           <mxGeometry height="220" width="580" x="20" y="110" as="geometry" />
         </mxCell>
         <mxCell id="heartbeat_monitor" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="heartbeat_monitor&#xa;(300ms途絶検知)" vertex="1">
-          <mxGeometry height="55" width="170" x="20" y="50" as="geometry" />
+          <mxGeometry height="55" width="115" x="20" y="50" as="geometry" />
         </mxCell>
         <mxCell id="watchdog" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="watchdog&#xa;(センサー途絶500ms)" vertex="1">
-          <mxGeometry height="55" width="170" x="205" y="50" as="geometry" />
+          <mxGeometry height="55" width="115" x="145" y="50" as="geometry" />
         </mxCell>
         <mxCell id="nav2_heartbeat_adapter" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="nav2_heartbeat_adapter&#xa;(Nav2生存監視アダプタ)" vertex="1">
-          <mxGeometry height="55" width="170" x="390" y="50" as="geometry" />
+          <mxGeometry height="55" width="160" x="270" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="stall_recovery" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="stall_recovery&#xa;(壁スタック検知/後退旋回)" vertex="1">
+          <mxGeometry height="55" width="125" x="440" y="50" as="geometry" />
         </mxCell>
         <mxCell id="safety_state_machine" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontStyle=1;" value="safety_state_machine&#xa;NORMAL / DEGRADED / SAFE_STOP / MANUAL_RECOVERY" vertex="1">
           <mxGeometry height="70" width="350" x="20" y="140" as="geometry" />
@@ -37,13 +40,13 @@
         <mxCell id="estop_bridge" parent="safety_bringup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" value="estop_bridge&#xa;(Kafkaコンシューマ&#xa;専用スレッド)" vertex="1">
           <mxGeometry height="70" width="170" x="400" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="safety_metrics" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;dashed=1;" value="safety_metrics (exporter)&#xa;各ノードが :9101-9105 でexport" vertex="1">
+        <mxCell id="safety_metrics" parent="robot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;dashed=1;" value="safety_metrics (exporter)&#xa;各ノードが :9101-9106 でexport" vertex="1">
           <mxGeometry height="40" width="280" x="20" y="380" as="geometry" />
         </mxCell>
         <mxCell id="obs" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;fontStyle=1;" value="観測スタック (edge/docker/ prometheus, grafana)" vertex="1">
           <mxGeometry height="200" width="460" x="750" y="70" as="geometry" />
         </mxCell>
-        <mxCell id="prometheus" parent="obs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Prometheus (:9090)&#xa;5ノードをスクレイプ" vertex="1">
+        <mxCell id="prometheus" parent="obs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Prometheus (:9090)&#xa;6ノードをスクレイプ" vertex="1">
           <mxGeometry height="55" width="220" x="20" y="40" as="geometry" />
         </mxCell>
         <mxCell id="grafana" parent="obs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;" value="Grafana (:3001)&#xa;hacobot_health.json" vertex="1">
@@ -68,28 +71,29 @@
           <mxGeometry relative="1" x="-0.3061" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="210" y="220" />
-              <mxPoint x="400" y="220" />
+              <mxPoint x="209.97" y="220.03" />
+              <mxPoint x="329.97" y="220.03" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e2" edge="1" parent="1" source="nav2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="nav2_heartbeat_adapter" value="/local_costmap/costmap">
-          <mxGeometry relative="1" x="1" y="-45" as="geometry">
-            <mxPoint x="-20" y="5" as="offset" />
+          <mxGeometry relative="1" x="-0.5385" as="geometry">
+            <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="700" y="138" />
-              <mxPoint x="700" y="230" />
+              <mxPoint x="520" y="190" />
+              <mxPoint x="520" y="190" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e3" edge="1" parent="1" source="nav2_heartbeat_adapter" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="heartbeat_monitor" value="/safety/heartbeat/nav2">
-          <mxGeometry relative="1" x="-0.3812" as="geometry">
+          <mxGeometry relative="1" x="0.0297" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="720" y="248" />
-              <mxPoint x="720" y="50" />
-              <mxPoint x="70" y="50" />
-              <mxPoint x="70" y="248" />
+              <mxPoint x="389.97" y="170.03" />
+              <mxPoint x="289.97" y="170.03" />
+              <mxPoint x="289.97" y="59.97" />
+              <mxPoint x="69.97" y="59.97" />
+              <mxPoint x="69.97" y="247.97" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -118,8 +122,8 @@
           <mxGeometry relative="1" x="0.1111" y="10" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="400" y="310" />
-              <mxPoint x="400" y="310" />
+              <mxPoint x="350" y="290" />
+              <mxPoint x="350" y="290" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -127,18 +131,28 @@
           <mxGeometry relative="1" x="-0.8396" y="-10" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="550" y="310" />
-              <mxPoint x="490" y="310" />
-              <mxPoint x="490" y="355" />
+              <mxPoint x="549.97" y="310.03" />
+              <mxPoint x="499.97" y="310.03" />
+              <mxPoint x="499.97" y="355" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e8" edge="1" parent="1" source="nav2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="safety_state_machine" value="/cmd_vel_nav2">
-          <mxGeometry relative="1" x="-0.5" as="geometry">
+        <mxCell id="e8" edge="1" parent="1" source="nav2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="stall_recovery" value="/cmd_vel_nav2_raw">
+          <mxGeometry relative="1" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="530" y="170" />
-              <mxPoint x="305" y="170" />
+              <mxPoint x="612" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8b" edge="1" parent="1" source="stall_recovery" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="safety_state_machine" value="/cmd_vel_nav2&lt;div&gt;(中継、壁スタック時のみ&lt;/div&gt;&lt;div&gt;後退旋回に差し替え)&lt;/div&gt;">
+          <mxGeometry relative="1" x="-0.6083" y="10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="612.48" y="290" />
+              <mxPoint x="719.96" y="290" />
+              <mxPoint x="719.96" y="440" />
+              <mxPoint x="305" y="440" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -154,7 +168,7 @@
         <mxCell id="e10" edge="1" parent="1" source="safety_bringup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="safety_metrics" value="export">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e11" edge="1" parent="1" source="safety_metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="prometheus" value="scrape :9101-9105">
+        <mxCell id="e11" edge="1" parent="1" source="safety_metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;fontSize=11;curved=0;" target="prometheus" value="scrape :9101-9106">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e12" edge="1" parent="1" source="prometheus" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;" target="grafana" value="query">
@@ -191,7 +205,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="e16" edge="1" parent="1" source="operator" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=11;curved=0;entryX=0.92;entryY=1.039;entryDx=0;entryDy=0;entryPerimeter=0;" target="safety_state_machine" value="/safety/recovery_command&#xa;(2段階の明示的復旧)">
-          <mxGeometry relative="1" x="-0.5852" as="geometry">
+          <mxGeometry relative="1" x="-0.584" as="geometry">
             <mxPoint as="offset" />
             <Array as="points">
               <mxPoint x="740" y="360" />

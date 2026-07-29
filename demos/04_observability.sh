@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # docs/verification_guide.md 手順4: 可観測性(Prometheus/Grafana)
 #
-# 成功の目安: Prometheusが5ノード全てをup状態でスクレイプしており、
+# 成功の目安: Prometheusが6ノード全てをup状態でスクレイプしており、
 # Grafanaにhacobot_health.jsonダッシュボードが自動プロビジョニングされている。
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -36,10 +36,10 @@ for t in targets:
 echo "$down_targets"
 up_count="$(echo "$down_targets" | grep -c ' up$' || true)"
 
-if [ "$up_count" -ge 5 ]; then
-  pass "Prometheusが5ノード全てをスクレイプできています(up: $up_count)"
+if [ "$up_count" -ge 6 ]; then
+  pass "Prometheusが6ノード全てをスクレイプできています(up: $up_count)"
 else
-  fail "upなターゲットが $up_count 件しかありません(5件必要)。safety_bringupが起動しているか確認してください"
+  fail "upなターゲットが $up_count 件しかありません(6件必要)。safety_bringupが起動しているか確認してください"
   exit 1
 fi
 

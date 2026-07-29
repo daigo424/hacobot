@@ -12,6 +12,7 @@
   <license>Apache-2.0</license>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>safety_msgs</exec_depend>
   <exec_depend>rviz_2d_overlay_msgs</exec_depend>
 
   <export>

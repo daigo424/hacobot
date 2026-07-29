@@ -25,10 +25,10 @@ namespace estop_bridge
 //   Nav2やセンサー系の重いコールバックで詰まっていても、E-Stop検知はそれに影響されず
 //   低遅延で処理できるようにするため(「他のセンサー処理系とは独立したスレッド/
 //   コールバックグループ」という要件をstd::threadの分離で満たす)。
-// - クラウド接続の生死監視(TCP到達性チェックによるハートビート)もこのノードが担う。
-//   E-Stop受信スレッドとは別に、heartbeat_timer_/connectivity_check_timer_は
-//   通常のROSタイマー(executor側)で動かす -- ハートビート発行の遅延はE-Stopほど
-//   致命的ではないため、あえてスレッドを分ける必要はない。
+// - クラウド接続の生死監視(TCP到達性チェック)もこのノードが担う。check_tcp_reachable()は
+//   同期的にブロックしうるため、Kafkaコンシューマと同じ理由で専用スレッド
+//   (connectivity_check_thread_)に分離する(heartbeat_timer_と同じexecutor上だと
+//   ハートビート発行自体が詰まって遅延し、heartbeat_monitorの閾値超過を誤って引き起こす)。
 class EstopBridgeNode : public rclcpp_lifecycle::LifecycleNode
 {
 public:
@@ -50,9 +50,10 @@ public:
 private:
   void kafka_consume_loop();
   void on_heartbeat_timer();
-  void on_connectivity_check_timer();
+  void connectivity_check_loop();
   static bool check_tcp_reachable(const std::string & host, int port, int timeout_ms);
   void stop_consumer_thread();
+  void stop_connectivity_check_thread();
 
   // --- Kafka購読(E-Stop本体)関連パラメータ ---
   std::string kafka_brokers_;
@@ -66,6 +67,7 @@ private:
   int64_t connect_timeout_ms_;
   int64_t connectivity_check_period_ms_;
   int64_t heartbeat_period_ms_;
+  int64_t heartbeat_lease_ms_;
   bool assume_healthy_;
   std::atomic<bool> is_healthy_;
   int64_t metrics_port_;
@@ -74,11 +76,12 @@ private:
     anomaly_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>> heartbeat_pub_;
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
-  rclcpp::TimerBase::SharedPtr connectivity_check_timer_;
 
   std::unique_ptr<RdKafka::KafkaConsumer> consumer_;
   std::thread consumer_thread_;
   std::atomic<bool> consumer_running_;
+  std::thread connectivity_check_thread_;
+  std::atomic<bool> connectivity_check_running_;
 
   safety_metrics::PrometheusExporter metrics_;
 };

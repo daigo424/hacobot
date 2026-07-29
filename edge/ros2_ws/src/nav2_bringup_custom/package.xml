@@ -10,6 +10,8 @@
   <maintainer email="noreply@example.com">hacobot</maintainer>
   <license>Apache-2.0</license>
 
+  <depend>ament_cmake_python</depend>
+
   <exec_depend>turtlebot3_gazebo</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>

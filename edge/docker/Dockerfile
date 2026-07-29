@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-nav2-bringup \
     ros-jazzy-slam-toolbox \
     ros-jazzy-teleop-twist-keyboard \
+    ros-jazzy-rqt-tf-tree \
+    ros-jazzy-rviz2 \
+    ros-jazzy-rviz-visual-tools \
     python3-colcon-common-extensions \
     python3-rosdep \
     librdkafka-dev \

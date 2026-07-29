@@ -8,6 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
+#include "rosgraph_msgs/msg/clock.hpp"
 #include "safety_metrics/prometheus_exporter.hpp"
 #include "std_msgs/msg/empty.hpp"
 
@@ -30,6 +31,10 @@ namespace nav2_heartbeat_adapter
 // 頻繁にliveness判定が反転し、heartbeat_monitor側で誤ったWARNING/SAFE_STOPを
 // 誘発していた)。
 //
+// この途絶判定はwall clock基準(use_sim_timeは設定しない)だが、GazeboのReal Time Factor
+// 低下時はsim timeが正常でもwall clock側だけ途絶に見えうる。/clockも購読し、同期間の
+// sim time側が途絶していなければ異常とみなさない(実機では単純にwall clockのみで判定)。
+//
 // heartbeat_monitorは「/safety/heartbeat/nav2 が届いているか」だけを見るため、
 // このアダプターが単にpublishを止めることが、Nav2死活監視の実質的な通知手段になる。
 class Nav2HeartbeatAdapterNode : public rclcpp_lifecycle::LifecycleNode
@@ -48,18 +53,28 @@ public:
 
 private:
   void on_heartbeat_timer();
+  void on_clock(const rosgraph_msgs::msg::Clock::SharedPtr msg);
 
   std::string liveness_topic_;
   std::string liveness_topic_type_;
   int64_t liveness_window_ms_;
   int64_t heartbeat_period_ms_;
+  int64_t heartbeat_lease_ms_;
   int64_t startup_grace_period_ms_;
   int64_t metrics_port_;
 
   rclcpp::Time last_seen_;
   rclcpp::Time activated_at_;
 
+  // /clockが一度でも届いていればtrue(=シミュレーター環境と判断できる)。
+  bool has_clock_;
+  // 直近で観測したsim time(/clockの値)。
+  rclcpp::Time current_sim_time_;
+  // 最後にliveness_topic_を受信した瞬間のsim timeのスナップショット。
+  rclcpp::Time last_seen_sim_time_;
+
   rclcpp::GenericSubscription::SharedPtr liveness_sub_;
+  rclcpp::Subscription<rosgraph_msgs::msg::Clock>::SharedPtr clock_sub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>> heartbeat_pub_;
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
 

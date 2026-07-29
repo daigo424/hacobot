@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""explore_liteの探索完了(EXPLORATION_COMPLETE)を検知したら、地図を保存する。
+"""explore_liteの探索完了(EXPLORATION_COMPLETE)、または手動トリガーを検知したら、地図を保存する。
 
 explore_lite自体には地図の保存機能が無いため、/explore/statusを監視し、
 探査完了を検知した時点でnav2_map_serverのmap_saver_cliを呼び出す。
+手動操縦(build_map.launch.pyのexploration_mode:=manual)ではexplore_liteが
+動かないため、代わりにsave_map_triggerトピックへのpublishで同じ保存処理を起動できる。
 """
 import os
 import subprocess
@@ -12,6 +14,7 @@ import time
 import rclpy
 from explore_lite_msgs.msg import ExploreStatus
 from rclpy.node import Node
+from std_msgs.msg import Empty
 
 SAVE_TIMEOUT_SEC = 15.0
 
@@ -23,7 +26,9 @@ class MapSaverTrigger(Node):
         self._map_path = map_path
         self._saved = False
         self.create_subscription(
-            ExploreStatus, 'explore/status', self._on_status, 10)
+            ExploreStatus, 'explore/status', self._on_explore_status, 10)
+        self.create_subscription(
+            Empty, 'save_map_trigger', self._on_manual_trigger, 10)
 
     def _backup_existing_map(self):
         # 削除ではなくタイムスタンプ付きでリネーム退避する(探査が失敗しても地図が
@@ -36,11 +41,19 @@ class MapSaverTrigger(Node):
                 os.rename(src, backup)
                 self.get_logger().info(f'既存の地図を退避しました: {backup}')
 
-    def _on_status(self, msg):
-        if self._saved or msg.status != ExploreStatus.EXPLORATION_COMPLETE:
+    def _on_explore_status(self, msg):
+        if msg.status != ExploreStatus.EXPLORATION_COMPLETE:
+            return
+        self._save_map('探索完了を検知しました。')
+
+    def _on_manual_trigger(self, _msg):
+        self._save_map('手動保存トリガーを検知しました。')
+
+    def _save_map(self, reason):
+        if self._saved:
             return
         self._saved = True
-        self.get_logger().info(f'探索完了を検知しました。地図を保存します: {self._map_path}')
+        self.get_logger().info(f'{reason}地図を保存します: {self._map_path}')
 
         os.makedirs(os.path.dirname(self._map_path), exist_ok=True)
         self._backup_existing_map()
@@ -64,7 +77,7 @@ class MapSaverTrigger(Node):
 
         if result.returncode == 0:
             self.get_logger().info(f'地図を保存しました: {self._map_path}.yaml')
-            self._show_dialog('地図生成 完了', f'探査が完了し、地図を保存しました:\n{self._map_path}.yaml')
+            self._show_dialog('地図生成 完了', f'地図を保存しました:\n{self._map_path}.yaml')
         else:
             self.get_logger().error(f'地図の保存に失敗しました: {result.stderr.strip()}')
             self._show_dialog('地図生成 失敗', f'地図の保存に失敗しました:\n{result.stderr.strip()}')

@@ -14,6 +14,7 @@
 #include "safety_msgs/msg/anomaly_event.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "slam_toolbox/srv/pause.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 
@@ -59,6 +60,13 @@ namespace stall_recovery
 // 誤ったスキャンがslam_toolboxのpose graphに取り込まれ地図を壊し続けてしまうため、
 // スタック検知の瞬間にslam_toolboxのpause_new_measurementsサービスで地図生成自体を
 // 一時停止し、PASSTHROUGHへ復帰する時点で再開する。
+//
+// cmd_velを横取りするだけではNav2/explore_lite側は介入に気づかず、Nav2は
+// 元の計画通りの指令を出し続け、Nav2自身のprogress_checkerとも無関係に
+// 二重でリカバリーが発火しうる。スタック検知時にexplore_liteのexplore/resumeへ
+// falseを送り(explore_lite側でNav2の現在のゴールをキャンセルさせ、新規ゴール
+// 送信も止める)、復帰時にtrueを送ることで、explore_lite/Nav2側の制御と
+// 明示的に排他させる。
 class StallRecoveryNode : public rclcpp_lifecycle::LifecycleNode
 {
 public:
@@ -88,6 +96,7 @@ public:
 
 private:
   void publish_mode();
+  void publish_explore_resume(bool resume);
   void on_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void on_cmd_vel_raw(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
   void on_recovery_command(const std_msgs::msg::Empty::SharedPtr msg);
@@ -154,6 +163,12 @@ private:
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<safety_msgs::msg::AnomalyEvent>> anomaly_pub_;
   // RViz等での可視化用に現在モードを文字列でpublishする(制御ロジックには使わない)
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>> mode_pub_;
+  // スタック検知時にexplore_liteへ一時停止(false)/再開(true)を明示的に伝える。
+  // explore_lite側はfalseを受けるとNav2の現在のゴールをキャンセルしてくれる
+  // (CANCELEDはフロンティアをブラックリストしない)ため、Nav2自身が「横取り」に
+  // 気づかず指令を出し続けたり、Nav2自身のprogress_checkerと二重にリカバリーが
+  // 発火したりする競合を避けられる。
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>> explore_resume_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 
   safety_metrics::PrometheusExporter metrics_;

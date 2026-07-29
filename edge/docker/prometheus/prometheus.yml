@@ -1,10 +1,10 @@
-# hacobot フェイルセーフ層5ノードのメトリクスをスクレイプするPrometheus設定。
+# hacobot フェイルセーフ層6ノードのメトリクスをスクレイプするPrometheus設定。
 #
 # 注意: このPrometheusはk3dクラスタ側(infra/)ではなく、edge/docker/のGazebo/ROS2
 # コンテナと同じdocker-compose(network_mode: host)側に置いている。理由は、
 # Docker Desktop環境ではk3d側からこのホスト上のros2_nav2_containerが公開する
-# メトリクスポート(9101-9105)へ到達できないため。Prometheus/Grafanaも
-# network_mode: hostにすることで、localhost:9101-9105へ直接スクレイプできる。
+# メトリクスポート(9101-9106)へ到達できないため。Prometheus/Grafanaも
+# network_mode: hostにすることで、localhost:9101-9106へ直接スクレイプできる。
 global:
   scrape_interval: 5s
 
@@ -24,3 +24,6 @@ scrape_configs:
   - job_name: estop_bridge
     static_configs:
       - targets: ["localhost:9105"]
+  - job_name: stall_recovery
+    static_configs:
+      - targets: ["localhost:9106"]

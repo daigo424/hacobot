@@ -13,6 +13,7 @@ install(PROGRAMS
   scripts/delete_entity_safely.py
   scripts/initial_map_seeder.py
   scripts/map_saver_trigger.py
+  scripts/explore_gate.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -38,8 +38,10 @@ StallRecoveryNode::StallRecoveryNode(const rclcpp::NodeOptions & options)
   min_linear_cmd_(0.03),
   min_angular_cmd_(0.05),
   cmd_freshness_sec_(1.0),
-  repeated_stall_window_sec_(60),
-  repeated_stall_limit_(3),
+  // 自力脱出は毎回成功するため、7回(約1回転)でのエスカレーションは早すぎる。
+  // 12回(13回目でエスカレーション)、window300秒(検知間隔8〜18秒に余裕を持たせる)へ緩和。
+  repeated_stall_window_sec_(300),
+  repeated_stall_limit_(12),
   control_period_ms_(50),
   metrics_port_(9106),
   mode_(Mode::PASSTHROUGH),
@@ -103,6 +105,8 @@ StallRecoveryNode::CallbackReturn StallRecoveryNode::on_configure(
     "/safety/anomaly_event", rclcpp::QoS(10));
   mode_pub_ = this->create_publisher<std_msgs::msg::String>(
     "/safety/stall_recovery_mode", rclcpp::QoS(1).transient_local());
+  explore_resume_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+    "explore/resume", rclcpp::QoS(10));
   pause_client_ = this->create_client<slam_toolbox::srv::Pause>(
     "slam_toolbox/pause_new_measurements");
   slam_paused_ = false;
@@ -117,6 +121,7 @@ StallRecoveryNode::CallbackReturn StallRecoveryNode::on_activate(
   cmd_vel_pub_->on_activate();
   anomaly_pub_->on_activate();
   mode_pub_->on_activate();
+  explore_resume_pub_->on_activate();
 
   const auto now = this->now();
   mode_ = Mode::PASSTHROUGH;
@@ -161,6 +166,7 @@ StallRecoveryNode::CallbackReturn StallRecoveryNode::on_deactivate(
   cmd_vel_pub_->on_deactivate();
   anomaly_pub_->on_deactivate();
   mode_pub_->on_deactivate();
+  explore_resume_pub_->on_deactivate();
 
   RCLCPP_INFO(this->get_logger(), "Deactivated");
   return CallbackReturn::SUCCESS;
@@ -390,6 +396,9 @@ bool StallRecoveryNode::record_stall_and_maybe_escalate()
 void StallRecoveryNode::enter_backing_off()
 {
   stall_timer_running_ = false;
+  // 通常の後退→旋回パス・後退省略パス・エスカレーションのいずれに進む場合も、
+  // ここが必ず最初に呼ばれるため、1箇所でexplore_liteへの制御奪取宣言を出せる。
+  publish_explore_resume(false);
 
   if (record_stall_and_maybe_escalate()) {
     return;
@@ -452,6 +461,9 @@ void StallRecoveryNode::enter_passthrough()
   if (slam_paused_) {
     set_slam_paused(false);
   }
+  // 正常なCOOLDOWN終了・ESCALATEDからの人手復旧のどちらもここを通るため、
+  // 1箇所でexplore_liteへの制御返却宣言を出せる。
+  publish_explore_resume(true);
   publish_mode();
 }
 
@@ -461,8 +473,22 @@ void StallRecoveryNode::publish_mode()
     return;
   }
   std_msgs::msg::String msg;
-  msg.data = to_string(mode_);
+  // stallが何回目か(repeated_stall_limit_を超えるとescalate)を併記し、
+  // モード名だけでは分からない「エスカレーションまでの余裕」を可視化する。
+  msg.data = to_string(mode_) + " [stall " +
+    std::to_string(recent_stall_times_.size()) + "/" +
+    std::to_string(repeated_stall_limit_) + "]";
   mode_pub_->publish(msg);
+}
+
+void StallRecoveryNode::publish_explore_resume(bool resume)
+{
+  if (!explore_resume_pub_ || !explore_resume_pub_->is_activated()) {
+    return;
+  }
+  std_msgs::msg::Bool msg;
+  msg.data = resume;
+  explore_resume_pub_->publish(msg);
 }
 
 void StallRecoveryNode::set_slam_paused(bool paused)
