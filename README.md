@@ -7,7 +7,7 @@
 
 ## デモ動画
 
-<div><video controls src="docs/build-map.mp4" muted="false"></video></div>
+https://github.com/user-attachments/assets/48e343f0-818e-4036-ba11-20650d006df5
 
 `make create-world` → `make build-map-auto`で、explore_liteによる自動フロンティア探査から地図の自動保存までをシミュレーター(Gazebo)上で実行している様子。
 
