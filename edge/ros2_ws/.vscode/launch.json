@@ -2,31 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ROS2: Launch Gazebo Sim (nav2_bringup_custom)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom gazebo_sim.launch.py",
-      "cwd": "${workspaceFolder}"
-    },
-    {
       "name": "ROS2: Launch Nav2 Bringup (nav2_bringup_custom)",
       "type": "node-terminal",
       "request": "launch",
       "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch nav2_bringup_custom nav2_bringup.launch.py",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "ROS2: RViz (for Gazebo Sim, no namespace)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && RVIZ_SRC=$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && RVIZ_TMP=/tmp/hacobot_view_flat.rviz && sed 's#/tb3_01/#/#g' $RVIZ_SRC > $RVIZ_TMP && rviz2 -d $RVIZ_TMP",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "ROS2: Teleop Keyboard (for Gazebo Sim, no namespace)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -r cmd_vel:=/cmd_vel",
       "cwd": "${workspaceFolder}"
     },
     {
@@ -47,7 +26,7 @@
       "name": "ROS2: RViz (for spawn_robot, namespaced tb3_XX)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && RVIZ_SRC=$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && RVIZ_TMP=/tmp/hacobot_view_tb3_${input:rvizRobotId}.rviz && sed 's/tb3_01/tb3_${input:rvizRobotId}/g' $RVIZ_SRC > $RVIZ_TMP && rviz2 -d $RVIZ_TMP --ros-args -r /tf:=/tb3_${input:rvizRobotId}/tf -r /tf_static:=/tb3_${input:rvizRobotId}/tf_static -r __ns:=/tb3_${input:rvizRobotId}",
+      "command": "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && RVIZ_SRC=$(ros2 pkg prefix spawn_robot)/share/spawn_robot/rviz/spawn_robot_view.rviz && RVIZ_TMP=/tmp/spawn_robot_view_tb3_${input:rvizRobotId}.rviz && sed 's/tb3_01/tb3_${input:rvizRobotId}/g' $RVIZ_SRC > $RVIZ_TMP && rviz2 -d $RVIZ_TMP --ros-args -r /tf:=/tb3_${input:rvizRobotId}/tf -r /tf_static:=/tb3_${input:rvizRobotId}/tf_static -r __ns:=/tb3_${input:rvizRobotId}",
       "cwd": "${workspaceFolder}"
     },
     {

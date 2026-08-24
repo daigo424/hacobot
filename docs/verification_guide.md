@@ -32,15 +32,10 @@ make build-test    # ワークスペース全体
 ```bash
 docker exec -d ros2_nav2_container bash -c \
   "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
-   ros2 launch nav2_bringup_custom gazebo_sim.launch.py"
-sleep 15
-# GUIは重いので落としてOK(仕組みには影響しない)
-docker exec ros2_nav2_container bash -c "ps aux | grep -E 'gz sim (gui|-g( |\$))' | grep -v grep | awk '{print \$2}' | xargs -r kill -9"
-
-docker exec -d ros2_nav2_container bash -c \
-  "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && \
    ros2 launch nav2_bringup_custom nav2_bringup.launch.py"
 sleep 30
+# GUIは重いので落としてOK(仕組みには影響しない)
+docker exec ros2_nav2_container bash -c "ps aux | grep -E 'gz sim (gui|-g( |\$))' | grep -v grep | awk '{print \$2}' | xargs -r kill -9"
 docker exec ros2_nav2_container bash -c "source /opt/ros/jazzy/setup.bash && ros2 node list"
 ```
 

@@ -87,16 +87,19 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(is_manual),
     )
 
+    # x_pose/y_poseはこのロボットのSLAM開始点(=mapフレーム原点に対応するGazebo世界座標)。
+    # map_saver_trigger.pyが地図保存時にサイドカーファイルへ記録し、spawn_robot.launch.py
+    # のAMCLモードがそこから初期位置を自動算出する(spawn_robot.launch.py参照)。
     map_saver_trigger_cmd = Node(
         package='spawn_robot',
         executable='map_saver_trigger.py',
         namespace=ns,
-        arguments=[map_path],
+        arguments=[map_path, LaunchConfiguration('x_pose'), LaunchConfiguration('y_pose')],
         output='screen',
         parameters=[{'use_sim_time': True}],
     )
 
-    # hacobot_view.rvizは全トピックが"tb3_01"決め打ちのため、対象namespaceへ一括置換した
+    # spawn_robot_view.rvizは全トピックが"tb3_01"決め打ちのため、対象namespaceへ一括置換した
     # コピーを使う。/tfはtf2の仕様上絶対パスになるため別途remapも必要(spawn_robot.launch.py参照)。
     rviz_cmd = Node(
         package='rviz2',
@@ -116,7 +119,7 @@ def launch_setup(context, *args, **kwargs):
 
 def build_rviz_config(ns):
     rviz_src_path = os.path.join(
-        get_package_share_directory('nav2_bringup_custom'), 'rviz', 'hacobot_view.rviz'
+        get_package_share_directory('spawn_robot'), 'rviz', 'spawn_robot_view.rviz'
     )
     with open(rviz_src_path, 'r') as f:
         content = f.read()

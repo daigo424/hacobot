@@ -14,7 +14,6 @@ install(DIRECTORY
 )
 
 install(PROGRAMS
-  scripts/activate_slam_toolbox.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
