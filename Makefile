@@ -1,9 +1,3 @@
-# 素のk3dクラスタだけ欲しい場合(runs/配下の軽量な動作確認スクリプトなど)は
-# infra/k3d/setup.sh・teardown.sh を直接呼ぶこと(CLUSTER_NAME環境変数で名前変更可)。
-# フルスタック(Kafka/SeaweedFS/Chaos Mesh)が要る場合は下記のinfra-deploy/infra-destroyを使う。
-
-.PHONY: infra-deploy infra-destroy
-
 # infra-deploy: k3dクラスタ構築 + SeaweedFS/Kafka/Chaos Meshのデプロイ(infra/deploy.sh)
 # infra-destroy: 上記のうちKafka/Helmリリースだけを後片付け(k3dクラスタ自体は残す)。
 #                クラスタごと消したい場合は infra/k3d/teardown.sh を直接使うこと。
@@ -15,7 +9,6 @@ infra-destroy:
 
 # S3互換ゲートウェイへport-forwardする(認証情報はinfra/helm-values/seaweedfs-values.yaml参照。
 # PoC用の固定値でありSecret化していないため本番投入前は必ず差し替えること)。
-.PHONY: seaweedfs-ui
 seaweedfs-ui:
 	@echo -----------------------------
 	@echo "SeaweedFS S3 API: http://localhost:8333"
@@ -37,9 +30,6 @@ seaweedfs-ui:
 #   make colcon-test  PKG=edge/ros2_ws/src/safety/watchdog
 #   make colcon-build-test PKG=safety_state_machine
 #   make colcon-build   # 全パッケージ
-
-.PHONY: up build test build-test new-launch-pkg rviz rviz-flat
-
 COMPOSE_PJ_NAME    := hacobot
 # WSL2かネイティブLinuxかでGPUパススルーの構成が別物になる(edge/docker/docker-compose.gpu-*.yml参照)
 # ため、/proc/versionで自動判定してoverrideファイルを差し替える。
@@ -57,8 +47,9 @@ ROS2_WS            := /workspace
 PKG                ?=
 PKG_NAME           := $(if $(PKG),$(notdir $(PKG)),)
 COLCON_SELECT      := $(if $(PKG_NAME),--packages-select $(PKG_NAME),)
-CMD_ROS2_SOURCE    := source /opt/ros/jazzy/setup.bash
-CMD_ROS2_WS_SOURCE := source $(ROS2_WS)/install/setup.bash
+CMD_ROS2_SOURCE    := source /opt/ros/jazzy/setup.bash && source /opt/ros2_controllers_ws/install/setup.bash && source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash
+CMD_ROS2_WS_SOURCE := test -f $(ROS2_WS)/install/setup.bash && source $(ROS2_WS)/install/setup.bash || true
+
 
 up:
 	@test -f .env || cp .env.example .env
@@ -76,66 +67,52 @@ down:
 build:
 	$(COMPOSE) --env-file .env build --no-cache
 
-# launchファイルだけを持つ新しいbringupパッケージ(nav2_bringup_custom, safety_bringupと
-# 同種)を対話的に作成する(scripts/create_launch_package.py)。colcon build後、他のlaunch
-# ファイルからIncludeLaunchDescriptionで呼び出せる状態まで生成する。
-# 対話入力が要るためホストのpython3で直接実行する(コンテナ経由にしない)。
-new-launch-pkg:
-	python3 scripts/create_launch_package.py
-
-# spawn_robotが起動したロボット(既定はROBOT_ID=tb3_01)の地図/コストマップ/LaserScan/
-# RobotModelを表示するRViz設定で起動する
-# (edge/ros2_ws/src/nav2_bringup_custom/rviz/hacobot_view.rviz)。
-# 各ロボットは専用の/tb3_0N/tfを持つ(ロボットごとに完全独立させる設計。詳細は
-# spawn_robot.launch.pyのdocstring参照)ため、RViz自身のプロセスにも
-# /tf:=/$(ROBOT_ID)/tfのremapが必要(無いとRVizはグローバルな/tfしか見ず何も表示されない)。
-# hacobot_view.rviz内の全トピックは"tb3_01"という文字列だけで一貫して書かれているため、
-# sedで一括置換すれば任意のROBOT_IDに対応できる(ファイルは複製しない)。
-# 例: make rviz ROBOT_ID=tb3_02
-ROBOT_ID ?= tb3_01
-
-# ROS2: Launch Gazebo Sim (nav2_bringup_custom)/Nav2 Bringupは、spawn_robot.launch.pyの
-# 名前空間の仕組みを通らない素のupstream demoパス(turtlebot3_world.launch.py直呼び)なので、
-# トピックは/scan・/map等、接頭辞なしのまま。hacobot_view.rvizの"tb3_01/"を空文字に
-# 置換して剥がすだけでよく、/tfのremapも不要(ROBOT_IDに対応する専用namespaceが無いため)。
-rviz-flat:
-	$(EXEC) $(ROS2_SERVICE) bash -c "\
-		$(CMD_ROS2_SOURCE) && \
-		$(CMD_ROS2_WS_SOURCE) && \
-		RVIZ_SRC=\$$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && \
-		RVIZ_TMP=/tmp/hacobot_view_flat.rviz && \
-		sed 's#/tb3_01/#/#g' \$$RVIZ_SRC > \$$RVIZ_TMP && \
-		rviz2 -d \$$RVIZ_TMP"
-
-rviz:
-	$(EXEC) $(ROS2_SERVICE) bash -c "\
-		$(CMD_ROS2_SOURCE) && \
-		$(CMD_ROS2_WS_SOURCE) && \
-		RVIZ_SRC=\$$(ros2 pkg prefix nav2_bringup_custom)/share/nav2_bringup_custom/rviz/hacobot_view.rviz && \
-		RVIZ_TMP=/tmp/hacobot_view_$(ROBOT_ID).rviz && \
-		sed 's/tb3_01/$(ROBOT_ID)/g' \$$RVIZ_SRC > \$$RVIZ_TMP && \
-		rviz2 -d \$$RVIZ_TMP \
-			--ros-args -r /tf:=/$(ROBOT_ID)/tf -r /tf_static:=/$(ROBOT_ID)/tf_static \
-			-r __ns:=/$(ROBOT_ID)"
-
 login:
+	$(EXEC) $(ROS2_SERVICE) bash
+
+# ros2 launchで起動したプロセスをCtrl+Cせず再起動すると、gz sim(rubyラッパー)や
+# ros_gz_bridge系ノードが孤児化して残り続けることがある(SIGINTがlaunchの子孫全員に
+# 伝播しないケース)。それらをまとめてSIGKILLで掃除する。
+# docker-compose.ymlのpid: hostによりホストとPID空間を共有しているため、
+# 1) -u rootでコンテナ内(root実行)由来のものだけに絞り、ホスト側の一般ユーザープロセス
+#    (make/docker compose exec自体など)を誤って巻き込まない
+# 2) パターン中の各キーワードを[x]で1文字だけ字句分割し、pkill自身のコマンドライン
+#    (-fの引数にこのパターン文字列がそのまま載る)に自己マッチしてpkillが自爆するのを防ぐ
+KILL_ROS_PATTERN := ([r]os2|g[z] sim|gzs[e]rver|gzcl[i]ent|ros[_]gz|rvi[z]2|robot_state_publ[i]sher|[n]av2|component_conta[i]ner|teleop_twist_key[b]oard|rub[y].*gz_tools)
+kill-ros:
 	$(EXEC) $(ROS2_SERVICE) bash -c \
-	  "$(CMD_ROS2_SOURCE) && $(CMD_ROS2_WS_SOURCE) && bash"
+	  "pkill -9 -u root -f '$(KILL_ROS_PATTERN)' || true"
 
 colcon:
 	$(EXEC) $(ROS2_SERVICE) bash -c \
 	  "$(CMD_ROS2_SOURCE) && $(CMD_ROS2_WS_SOURCE) && \
 	   cd $(ROS2_WS) && $(CMD_RUN)"
 
+# bear(edge/workspace/.clangdが参照する/workspace/compile_commands.jsonを生成)。
+# --appendが無いと--packages-select時に他パッケージ分が上書きで消えるため必須。
+# CLEAN=1でbuild/install/log/compile_commands.jsonを削除してからビルドする。
+COLCON_BUILD_CLEAN := $(if $(CLEAN),rm -rf build/ install/ log/ compile_commands.json &&,)
+COLCON_BUILD_WARN := -DCMAKE_WARN_DEPRECATED=$(if $(WARN),ON,OFF)
 colcon-build:
-	$(MAKE) colcon CMD_RUN="colcon build $(COLCON_SELECT)"
+	$(MAKE) colcon CMD_RUN="$(COLCON_BUILD_CLEAN) bear --append -- colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(COLCON_BUILD_WARN) --no-warn-unused-cli $(COLCON_SELECT)"
 colcon-build-clean:
-	$(MAKE) colcon CMD_RUN="rm -rf build/ install/ log/ && colcon build  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --no-warn-unused-cli $(COLCON_SELECT)"
+	$(MAKE) colcon-build CLEAN=1
+colcon-build-clean-warn:
+	$(MAKE) colcon-build CLEAN=1 WARN=1
 colcon-test:
 	# --executor sequential: 複数パッケージを並列実行すると、別パッケージのgtest同士が
 	# 同じROSトピック名(例: /safety/anomaly_event)で混信することがあるため直列実行する
 	$(MAKE) colcon CMD_RUN="colcon test --executor sequential $(COLCON_SELECT) && colcon test-result --verbose"
 colcon-build-test: colcon-build colcon-test
+
+install-packages:
+	$(MAKE) colcon CMD_RUN="apt-get update && rosdep install --from-paths src --ignore-src -r -y"
+
+launch-urdf-display:
+	$(MAKE) colcon CMD_RUN="ros2 launch urdf_tutorial display.launch.py model:=/workspace/src/my_robot_description/urdf/$(FILENAME)"
+
+rqt-graph:
+	$(MAKE) colcon CMD_RUN="rqt_graph"
 
 # ROS2: デバッグ用の便利コマンド群
 topic-list:

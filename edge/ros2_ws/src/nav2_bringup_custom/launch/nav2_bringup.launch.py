@@ -23,9 +23,10 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import SetRemap
 from nav2_params_builder import build_nav2_params_yaml
-
+from launch_ros.actions import Node, SetRemap
 
 def generate_launch_description():
+    turtlebot3_gazebo_dir = get_package_share_directory('turtlebot3_gazebo')
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     safety_bringup_dir = get_package_share_directory('safety_bringup')
     default_params_file = build_nav2_params_yaml()
@@ -40,6 +41,17 @@ def generate_launch_description():
     declare_params_file_cmd = DeclareLaunchArgument(
         'params_file', default_value=default_params_file,
         description='Nav2/SLAM Toolboxに渡すパラメータYAML')
+
+    gazebo_sim_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(turtlebot3_gazebo_dir, 'launch', 'turtlebot3_world.launch.py')
+        ),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'x_pose': '-2.0',
+            'y_pose': '-0.5',
+        }.items()
+    )
 
     nav2_bringup_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -75,18 +87,25 @@ def generate_launch_description():
         )
     )
 
-    # nav2_bringupのslam_launch.pyはslam_toolbox付属のautostart機構に頼っているが、
-    # 実測では自動発火しないことが多いため、configure/activateを明示的に呼ぶ
-    # (spawn_robot.launch.pyと同じ回避策。詳細はactivate_slam_toolbox.py参照)
-    activate_slam_toolbox_cmd = ExecuteProcess(
-        cmd=['ros2', 'run', 'nav2_bringup_custom', 'activate_slam_toolbox.py', '/slam_toolbox'],
+    rviz_config_file = os.path.join(
+        get_package_share_directory('nav2_bringup_custom'),
+        'rviz', 'view.rviz'
+    )
+
+    rviz_cmd = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
         output='screen',
+        arguments=['-d', rviz_config_file],
+        parameters=[{'use_sim_time': use_sim_time}]
     )
 
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_params_file_cmd)
+    ld.add_action(gazebo_sim_cmd)
     ld.add_action(nav2_bringup_remapped)
     ld.add_action(safety_bringup_cmd)
-    ld.add_action(activate_slam_toolbox_cmd)
+    ld.add_action(rviz_cmd)
     return ld

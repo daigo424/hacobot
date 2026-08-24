@@ -52,8 +52,8 @@ def launch_setup(context, *args, **kwargs):
 
     # x_pose/y_poseはGazebo世界座標(スポーン位置)。slam_toolboxはSLAM開始時の
     # ロボットの実世界位置をmapフレームの(0,0,0)と定義するため、両者は別の座標系であり、
-    # 一般には値が一致しない(build_map.launch.pyの既定スポーン地点(-2.0, -0.5)がmapフレーム
-    # では(0, 0)になる、という関係)。AMCLへの初期位置はmapフレーム側の値を別途指定する。
+    # 一般には値が一致しない。AMCLへの初期位置はmapフレーム側の値が必要なため、
+    # 既定(空文字)なら下のAMCL分岐でmap保存時に記録した原点(*.origin.yaml)から自動算出する。
     initial_pose_x_val = context.perform_substitution(LaunchConfiguration('initial_pose_x'))
     initial_pose_y_val = context.perform_substitution(LaunchConfiguration('initial_pose_y'))
 
@@ -72,6 +72,22 @@ def launch_setup(context, *args, **kwargs):
         resolved_map_yaml = map_yaml_arg if map_yaml_arg else default_map_yaml
         # slam:=Trueと同様、内部でPythonのeval()条件分岐に使われるため'False'(先頭大文字)必須
         nav2_mode_args = {'slam': 'False', 'map': resolved_map_yaml}
+
+        if not initial_pose_x_val and not initial_pose_y_val:
+            # map_saver_trigger.pyがmap保存時に書き出したSLAM開始点(Gazebo世界座標)。
+            # x_pose/y_poseとの差分がmapフレームでの初期位置になる。
+            origin_path = os.path.splitext(resolved_map_yaml)[0] + '.origin.yaml'
+            if os.path.exists(origin_path):
+                with open(origin_path) as f:
+                    origin = yaml.safe_load(f)
+                initial_pose_x_val = str(float(x_pose_val) - float(origin['x']))
+                initial_pose_y_val = str(float(y_pose_val) - float(origin['y']))
+            else:
+                # この地図はorigin.yaml導入前に保存されたものなど。原点不明のため
+                # 旧来の既定値(0.0, 0.0)にフォールバックする(スポーン位置とズレる可能性がある)。
+                print(f'[spawn_robot] {origin_path} が無いため初期位置を(0.0, 0.0)にフォールバックします')
+                initial_pose_x_val = '0.0'
+                initial_pose_y_val = '0.0'
 
     model_folder = 'turtlebot3_' + os.environ.get('TURTLEBOT3_MODEL', 'waffle')
 
@@ -404,10 +420,10 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument('y_pose', default_value='-0.5'))
     ld.add_action(DeclareLaunchArgument('z_pose', default_value='0.01'))
     # AMCLモード時のみ使用。mapフレームでの初期位置(x_pose/y_poseとは別の座標系、
-    # 詳細はlaunch_setup()内のコメント参照)。既定値の0.0/0.0は、x_pose/y_poseの
-    # 既定値(-2.0, -0.5、build_map.launch.pyのSLAM開始座標と同一)に対応するmap原点。
-    ld.add_action(DeclareLaunchArgument('initial_pose_x', default_value='0.0'))
-    ld.add_action(DeclareLaunchArgument('initial_pose_y', default_value='0.0'))
+    # 詳細はlaunch_setup()内のコメント参照)。既定の空文字は「map保存時に記録した
+    # 原点から自動算出する」を意味する。手動で上書きしたい場合のみ明示的に数値を渡す。
+    ld.add_action(DeclareLaunchArgument('initial_pose_x', default_value=''))
+    ld.add_action(DeclareLaunchArgument('initial_pose_y', default_value=''))
     ld.add_action(DeclareLaunchArgument('auto_seed_map', default_value='true'))
     ld.add_action(DeclareLaunchArgument(
         'watchdog_timeout_ms', default_value='500',

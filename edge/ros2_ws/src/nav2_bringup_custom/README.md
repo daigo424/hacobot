@@ -8,13 +8,13 @@ TurtleBot3(Waffle)のGazeboシミュレーションと、Nav2 + SLAM Toolboxに�
 SLAM(slam_toolbox)を自己位置推定源として使う**構成になっている
 (`nav2_params_builder`パッケージ参照)。
 
-**注意**: このパッケージの`gazebo_sim.launch.py`/`nav2_bringup.launch.py`は単体動作確認用の
-経路で、実際の開発・検証はマルチロボット対応の`spawn_robot`/`create_world`パッケージ経由
-(`make create-world` → `make build-map-auto`、リポジトリ直下の`README.md`参照)で行っている。
-`gazebo_sim.launch.py`(TurtleBot3本家の`turtlebot3_world.launch.py`をそのまま起動)自体は
-Gazebo Harmonic上でも`/scan`等のブリッジを含め正常動作する。GUI("gz sim -g")を
-`kill -9`する等、外部からの終了は避けること(本家launchが`on_exit_shutdown=true`を
-設定しており、GUIの終了がサーバー・ブリッジまで巻き添えでシャットダウンさせる)。
+**注意**: このパッケージの`nav2_bringup.launch.py`は単体動作確認用の経路で、実際の開発・検証は
+マルチロボット対応の`spawn_robot`/`create_world`パッケージ経由(`make create-world` →
+`make build-map-auto`、リポジトリ直下の`README.md`参照)で行っている。
+Gazebo(TurtleBot3本家の`turtlebot3_world.launch.py`)自体はGazebo Harmonic上でも`/scan`等の
+ブリッジを含め正常動作する。GUI("gz sim -g")を`kill -9`する等、外部からの終了は避けること
+(本家launchが`on_exit_shutdown=true`を設定しており、GUIの終了がサーバー・ブリッジまで
+巻き添えでシャットダウンさせる)。
 
 ## セットアップ
 
@@ -37,18 +37,8 @@ docker exec -it ros2_nav2_container bash -c "
 
 ## 起動方法
 
-ターミナル1: Gazeboシミュレータを起動
-
-```bash
-docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/jazzy/setup.bash && source install/setup.bash &&
-    ros2 launch nav2_bringup_custom gazebo_sim.launch.py
-"
-```
-
-グリッド(ワールド)が表示されるまで、初回のみ3Dモデルのダウンロードで1〜2分かかることがある。
-
-ターミナル2: Nav2 + SLAM Toolboxスタックを起動
+`nav2_bringup.launch.py`1本でGazebo・Nav2+SLAM Toolboxスタック・RViz(`rviz/view.rviz`)・
+`safety_bringup`一式をまとめて起動する。
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
@@ -57,18 +47,10 @@ docker exec -it ros2_nav2_container bash -c "
 "
 ```
 
-ターミナル3(任意): RVizで地図生成・ゴール指定を行う場合
-
-```bash
-docker exec -it ros2_nav2_container bash -c "
-    source /opt/ros/jazzy/setup.bash && source install/setup.bash &&
-    ros2 launch nav2_bringup rviz_launch.py
-"
-```
-
+グリッド(ワールド)が表示されるまで、初回のみ3Dモデルのダウンロードで1〜2分かかることがある。
 RViz上で「Nav2 Goal」を指定すると、SLAM Toolboxが生成中の地図上をNav2が自律走行する。
 
-ターミナル4(任意): キーボードで操作する場合
+ターミナル2(任意): キーボードで操作する場合
 
 ```bash
 docker exec -it ros2_nav2_container bash -c "
@@ -79,8 +61,8 @@ docker exec -it ros2_nav2_container bash -c "
 
 ## 構成ファイル
 
-- `launch/gazebo_sim.launch.py`: `turtlebot3_gazebo` の `turtlebot3_world.launch.py` を起動するだけの薄いラッパー
-- `launch/nav2_bringup.launch.py`: `nav2_bringup` の `bringup_launch.py` を `slam:=true` で起動するだけの薄いラッパー
+- `launch/nav2_bringup.launch.py`: `turtlebot3_gazebo`の`turtlebot3_world.launch.py`(Gazebo)、
+  `nav2_bringup`の`bringup_launch.py`(`slam:=true`)、RViz、`safety_bringup`をまとめて起動する
 - `params/defaults/`: 本家Nav2(`nav2_params.yaml`、MPPIベース)・TurtleBot3 Waffleサンプル
   (`waffle.yaml`)・slam_toolbox本家(`mapper_params_online_sync.yaml`)の無加工リファレンス。
   実際にNav2へ渡すパラメータは、これらを`nav2_params_builder`パッケージ

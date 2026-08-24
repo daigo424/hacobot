@@ -6,27 +6,14 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/workspace/install/turtlebot3_gazebo/include/**",
-        "/workspace/install/safety_msgs/include/**",
-        "/workspace/install/safety_metrics/include/**",
-        "/workspace/install/explore_lite/include/**",
-        "/workspace/install/explore_lite_msgs/include/**",
         "/opt/ros/jazzy/include/**",
-        "/workspace/src/remote_control/estop_bridge/include/**",
-        "/workspace/src/safety/heartbeat_monitor/include/**",
-        "/workspace/src/safety/nav2_heartbeat_adapter/include/**",
-        "/workspace/src/safety/safety_metrics/include/**",
-        "/workspace/src/safety/safety_state_machine/include/**",
-        "/workspace/src/safety/watchdog/include/**",
-        "/workspace/src/vendor/explore_lite/include/**",
-        "/workspace/src/vendor/turtlebot3_gazebo/include/**",
         "/usr/include/**"
       ],
       "name": "ROS",
       "intelliSenseMode": "gcc-x64",
       "compilerPath": "/usr/bin/gcc",
       "cStandard": "gnu11",
-      "cppStandard": "c++14"
+      "cppStandard": "c++20"
     }
   ],
   "version": 4

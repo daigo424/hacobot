@@ -27,6 +27,8 @@ services:
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
       - PULSE_SERVER=${PULSE_SERVER}
+      # colcon buildを素で打ってもCMAKE_EXPORT_COMPILE_COMMANDS=ONが付くようにする(clangdがbuild/<pkg>/compile_commands.jsonを参照するため)。
+      - COLCON_DEFAULTS_FILE=/workspace/colcon_defaults.yaml
     volumes:
       - ../ros2_ws:/workspace
       - ../../testing:/testing

@@ -15,6 +15,14 @@ nav2_costmap_2dは地図が完全に空(width/height=0)だと経路計画がで�
 留まってmin_frontier_sizeを満たすフロンティアがほぼ無い状態になり、explore_liteが
 実際には未探索の地図に対して即座に「探索完了」と判定してしまう不具合を引き起こした。
 そのため旋回を再度有効化している。
+
+slam_toolboxはminimum_travel_distance/headingの制約により、初回スキャン以降は
+ロボットが実際に動かない限り新しいスキャンを地図に取り込まない
+(mapper_params_online_sync.yaml参照)。そのため「回るのをやめて別の合図を待つ」
+という変更では解決しない。一方で、初回スキャンの時点(スポーン直後、まだ回転していない)
+で既に自由空間が十分な場合はそれ以上回る必要が無いため、/mapの既知自由空間の面積が
+一定値(MIN_FREE_AREA_M2)を超えた時点で旋回を打ち切る。360度回りきっても
+満たさない場合は、従来通りの固定時間(SEED_DURATION_SEC)で終了する。
 """
 import math
 
@@ -27,10 +35,16 @@ from std_msgs.msg import Empty
 from visualization_msgs.msg import Marker
 
 ANGULAR_Z_RAD_S = 0.4
-SEED_DURATION_SEC = 2 * math.pi / ANGULAR_Z_RAD_S  # ちょうど360度分
+SEED_DURATION_SEC = 2 * math.pi / ANGULAR_Z_RAD_S  # ちょうど360度分(早期終了できない場合の上限)
 PUBLISH_PERIOD_SEC = 0.1
 MAP_READY_TIMEOUT_SEC = 20.0
 STATUS_MARKER_ID = 0
+# 半径1m相当の円が既知自由空間になれば、min_frontier_size(0.75m、explore_lite側の設定)を
+# 満たすフロンティアが見つかる可能性が高いという経験則に基づく閾値。
+MIN_FREE_AREA_M2 = 3.0
+# occupancy gridの値(0=完全に自由〜100=完全に占有、-1=未知)のうち、自由とみなす閾値。
+# nav2/map_serverの一般的な占有判定しきい値(50)に合わせる。
+FREE_VALUE_THRESHOLD = 50
 
 
 class InitialMapSeeder(Node):
@@ -47,6 +61,7 @@ class InitialMapSeeder(Node):
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
         self._map_ready = False
+        self._sufficient_free_space = False
         self.create_subscription(OccupancyGrid, 'map', self._on_map, map_qos)
         # 完了をexplore_gate.pyに知らせ、旋回が終わるまでexplore_liteが動き出さない
         # ようにする(costmapが少しでもできた時点でexplore_liteは動けてしまうため)。
@@ -66,10 +81,19 @@ class InitialMapSeeder(Node):
         self._tick_count = 0
         self._timer = self.create_timer(PUBLISH_PERIOD_SEC, self._on_timer)
 
-    def _on_map(self, _msg):
+    def _on_map(self, msg):
         if not self._map_ready:
             self._map_ready = True
             self.get_logger().info('slam_toolboxの初回mapを検知しました')
+        if not self._sufficient_free_space and self._free_area_m2(msg) >= MIN_FREE_AREA_M2:
+            self._sufficient_free_space = True
+            self.get_logger().info(f'自由空間が{MIN_FREE_AREA_M2}m^2以上になりました')
+
+    @staticmethod
+    def _free_area_m2(grid_msg):
+        resolution = grid_msg.info.resolution
+        free_cells = sum(1 for v in grid_msg.data if 0 <= v < FREE_VALUE_THRESHOLD)
+        return free_cells * resolution * resolution
 
     def _publish_status_marker(self, active):
         marker = Marker()
@@ -114,19 +138,21 @@ class InitialMapSeeder(Node):
                 self.get_logger().warning(
                     f'{MAP_READY_TIMEOUT_SEC}秒待っても初回mapを検知できなかったため、'
                     '待たずに終了します')
+            if self._sufficient_free_space:
+                # 初回スキャンの時点で既に自由空間が十分(開けた場所にスポーンした場合)。
+                # 1度も回転せずに終了する。
+                self._finish_seeding()
+                return
             self._rotation_start_time = now
             self._rotation_start_tick = self._tick_count
             return
 
-        # --- その場360度旋回 ---
+        # --- その場360度旋回(自由空間が十分になり次第、途中で打ち切る) ---
         elapsed_sec = (now - self._rotation_start_time).nanoseconds / 1e9
         tick_elapsed_sec = (self._tick_count - self._rotation_start_tick) * PUBLISH_PERIOD_SEC
-        if elapsed_sec >= SEED_DURATION_SEC or tick_elapsed_sec >= SEED_DURATION_SEC:
-            self._pub.publish(TwistStamped())
-            self._publish_status_marker(active=False)
-            self._done_pub.publish(Empty())
-            self.get_logger().info('初期地図の自動生成を終了しました')
-            self._timer.cancel()
+        reached_limit = elapsed_sec >= SEED_DURATION_SEC or tick_elapsed_sec >= SEED_DURATION_SEC
+        if reached_limit or self._sufficient_free_space:
+            self._finish_seeding()
             return
 
         cmd = TwistStamped()
@@ -134,6 +160,13 @@ class InitialMapSeeder(Node):
         cmd.twist.angular.z = ANGULAR_Z_RAD_S
         self._pub.publish(cmd)
         self._publish_status_marker(active=True)
+
+    def _finish_seeding(self):
+        self._pub.publish(TwistStamped())
+        self._publish_status_marker(active=False)
+        self._done_pub.publish(Empty())
+        self.get_logger().info('初期地図の自動生成を終了しました')
+        self._timer.cancel()
 
 
 def main():

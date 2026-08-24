@@ -109,8 +109,9 @@ make up   # edge/docker/docker-compose.yml の ros2-nav2/prometheus/grafana を�
 make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
 ```
 
-補完(clangd)は`colcon build`が生成する`compile_commands.json`を自動検出するため
-追加設定不要。
+補完(clangd)は`make colcon-build`(内部で`bear --append`を使い、ワークスペース直下に
+`compile_commands.json`を集約生成する)を実行すれば自動検出するため追加設定不要。
+素の`colcon build`だとパッケージごとに分散生成されるだけで`.clangd`の参照先と噛み合わない。
 
 ### 3. ビルド・テスト(VSCode タスク)
 
@@ -127,8 +128,7 @@ make infra-deploy   # k3dクラスタ + SeaweedFS/Kafka/Chaos Mesh
 
 実行とデバッグパネルから選択(`edge/ros2_ws/.vscode/launch.json`):
 
-- `ROS2: Launch Gazebo Sim (nav2_bringup_custom)`: Gazebo+TurtleBot3起動
-- `ROS2: Launch Nav2 Bringup (nav2_bringup_custom)`: Nav2フルスタック+`safety_bringup`5ノード起動
+- `ROS2: Launch Nav2 Bringup (nav2_bringup_custom)`: Gazebo+TurtleBot3+Nav2フルスタック+`safety_bringup`5ノード起動
 
 どちらも`node-terminal`型(シェルで実行するだけでデバッガは付かない)。`ros2 launch`は
 複数プロセスを生成するため直接ブレークポイントは効かない。デバッグしたい場合は次項を使う。
